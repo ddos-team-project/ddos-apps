@@ -1,0 +1,112 @@
+name: Deploy Healthcheck API to EC2
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'healthcheck-api/**'
+      - '.github/workflows/deploy-healthcheck-api.yml'
+  pull_request:
+    branches: [ main, dev ]
+    paths:
+      - 'healthcheck-api/**'
+  workflow_dispatch:
+
+env:
+  ECR_REPOSITORY: dh-prod-t1-ecr-healthcheck-api
+  IMAGE_TAG: dev
+  APP_DIR: healthcheck-api
+
+jobs:
+  build-test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image (test only)
+        run: |
+          cd ${{ env.APP_DIR }}
+          docker build -t healthcheck-api:test .
+          echo "Build successful"
+
+  deploy:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - region: ap-northeast-2
+            asg: healthcheck-api-seoul-asg
+          - region: ap-northeast-1
+            asg: healthcheck-api-tokyo-asg
+    env:
+      AWS_REGION: ${{ matrix.region }}
+      ASG_NAME: ${{ matrix.asg }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ matrix.region }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          cd ${{ env.APP_DIR }}
+          IMAGE_URI=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+          echo "Building Docker image..."
+          docker build -t $IMAGE_URI .
+
+          echo "Pushing to ECR..."
+          docker push $IMAGE_URI
+
+          echo "image=$IMAGE_URI" >> $GITHUB_OUTPUT
+
+      - name: Start ASG instance refresh
+        id: start-refresh
+        env:
+          ASG_NAME: ${{ env.ASG_NAME }}
+        run: |
+          REFRESH_ID=$(aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name "$ASG_NAME" \
+            --strategy Rolling \
+            --preferences '{"MinHealthyPercentage":90,"InstanceWarmup":120}' \
+            --query 'InstanceRefreshId' \
+            --output text)
+          echo "refresh_id=$REFRESH_ID" >> $GITHUB_OUTPUT
+
+      - name: Wait for instance refresh
+        env:
+          ASG_NAME: ${{ env.ASG_NAME }}
+          REFRESH_ID: ${{ steps.start-refresh.outputs.refresh_id }}
+        run: |
+          echo "Waiting for ASG instance refresh $REFRESH_ID on $ASG_NAME"
+          for i in {1..60}; do
+            STATUS=$(aws autoscaling describe-instance-refreshes \
+              --auto-scaling-group-name "$ASG_NAME" \
+              --instance-refresh-ids "$REFRESH_ID" \
+              --query 'InstanceRefreshes[0].Status' \
+              --output text)
+            echo "Status: $STATUS"
+            if [ "$STATUS" = "Successful" ]; then
+              exit 0
+            elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ]; then
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for instance refresh"
+          exit 1

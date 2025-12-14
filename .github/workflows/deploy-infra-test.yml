@@ -1,0 +1,81 @@
+name: Deploy Infra Test Service
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'infra-test/**'
+      - '.github/workflows/deploy-infra-test.yml'
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'infra-test/**'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-northeast-2
+  S3_BUCKET: dh-prod-infra
+  CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.INFRA_CLOUDFRONT_ID }}
+  APP_DIR: infra-test
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ${{ env.APP_DIR }}/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd ${{ env.APP_DIR }}
+          npm ci || npm install
+
+      - name: Build
+        run: |
+          cd ${{ env.APP_DIR }}
+          npm run build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: infra-test-dist
+          path: ${{ env.APP_DIR }}/dist
+
+  deploy:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: infra-test-dist
+          path: dist
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy to S3
+        run: |
+          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} --delete
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ env.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/*"
+
+      - name: Output URL
+        run: |
+          echo "Infra Test Service deployed to: https://infra.ddos.io.kr"
