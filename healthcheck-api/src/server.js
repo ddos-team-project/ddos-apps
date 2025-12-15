@@ -119,7 +119,7 @@ app.get('/idc-health', async (req, res) => {
 });
 
 // 부하 테스트 엔드포인트
-const ALLOW_LOAD_TEST = process.env.ALLOW_LOAD_TEST === 'true';
+const ALLOW_LOAD_TEST = process.env.ALLOW_STRESS === 'true';
 const SEOUL_ALB_URL = process.env.SEOUL_ALB_URL || 'https://tier1.ddos.io.kr';
 const TOKYO_ALB_URL = process.env.TOKYO_ALB_URL || 'https://tier1.ddos.io.kr';
 
