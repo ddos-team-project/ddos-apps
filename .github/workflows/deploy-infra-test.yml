@@ -19,7 +19,33 @@ env:
   APP_DIR: infra-test
 
 jobs:
+  build-test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ${{ env.APP_DIR }}/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd ${{ env.APP_DIR }}
+          npm ci || npm install
+
+      - name: Build (test only)
+        run: |
+          cd ${{ env.APP_DIR }}
+          npm run build
+          echo "Build successful"
+
   build:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
