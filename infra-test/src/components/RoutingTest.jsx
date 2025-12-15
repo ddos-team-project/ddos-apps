@@ -139,15 +139,15 @@ export default function RoutingTest({ onFlowTrigger }) {
   return (
     <div className="routing-test">
       <div className="routing-header">
-        <h3>Routing Distribution Test</h3>
+        <h3>라우팅 분산 테스트</h3>
         <p className="routing-description">
-          Route53 가중치 라우팅 (Seoul 80% / Tokyo 20%) 검증
+          Route53 가중치 라우팅 (서울 80% / 도쿄 20%) 검증
         </p>
       </div>
 
       <div className="routing-controls">
         <button onClick={() => runMultipleRequests(10)} disabled={loading}>
-          {loading ? 'Testing...' : '10회 테스트'}
+          {loading ? '테스트 중...' : '10회 테스트'}
         </button>
         <button onClick={() => runMultipleRequests(20)} disabled={loading}>
           20회 테스트
@@ -162,7 +162,7 @@ export default function RoutingTest({ onFlowTrigger }) {
           <div className="routing-bar-container">
             <div className="routing-bar-item">
               <div className="bar-label">
-                <span>🇰🇷 Seoul</span>
+                <span>🇰🇷 서울</span>
                 <span>{results.seoul}회 ({getPercentage(results.seoul)}%)</span>
               </div>
               <div className="bar-track">
@@ -176,7 +176,7 @@ export default function RoutingTest({ onFlowTrigger }) {
 
             <div className="routing-bar-item">
               <div className="bar-label">
-                <span>🇯🇵 Tokyo</span>
+                <span>🇯🇵 도쿄</span>
                 <span>{results.tokyo}회 ({getPercentage(results.tokyo)}%)</span>
               </div>
               <div className="bar-track">
@@ -191,7 +191,7 @@ export default function RoutingTest({ onFlowTrigger }) {
             {results.unknown > 0 && (
               <div className="routing-bar-item">
                 <div className="bar-label">
-                  <span>❓ Unknown</span>
+                  <span>❓ 알 수 없음</span>
                   <span>{results.unknown}회 ({getPercentage(results.unknown)}%)</span>
                 </div>
                 <div className="bar-track">

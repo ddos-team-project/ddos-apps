@@ -6,14 +6,14 @@ import { getApiUrl } from './api'
 
 
 function getRegionDisplay(region) {
-  if (!region) return { flag: '🌐', name: 'Unknown' }
+  if (!region) return { flag: '🌐', name: '알 수 없음' }
 
   if (region.includes('northeast-2') || region.toLowerCase().includes('seoul')) {
-    return { flag: '🇰🇷', name: 'SEOUL' }
+    return { flag: '🇰🇷', name: '서울' }
   }
 
   if (region.includes('northeast-1') || region.toLowerCase().includes('tokyo')) {
-    return { flag: '🇯🇵', name: 'TOKYO' }
+    return { flag: '🇯🇵', name: '도쿄' }
   }
 
   return { flag: '🌐', name: region.toUpperCase() }
@@ -76,12 +76,12 @@ export default function RegionCard() {
   return (
     <div className="card">
       <div className="card-header">
-        <h3 className="card-title">AWS Cloud Test</h3>
+        <h3 className="card-title">AWS 클라우드 테스트</h3>
         <span className="card-badge badge-aws">AWS</span>
       </div>
 
       <div className="endpoint-info">
-        Endpoint: tier1.ddos.io.kr
+        엔드포인트: tier1.ddos.io.kr
       </div>
 
       <div className="buttons-row">
@@ -90,21 +90,21 @@ export default function RegionCard() {
           loading={loading.ping}
           variant="primary"
         >
-          Ping Test
+          Ping 테스트
         </TestButton>
         <TestButton
           onClick={() => runTest('health')}
           loading={loading.health}
           variant="secondary"
         >
-          Health Test
+          Health 테스트
         </TestButton>
       </div>
 
       {result && (
         <div className="status-row">
           <div className="status-item">
-            <span className="status-label">Routing:</span>
+            <span className="status-label">라우팅:</span>
             {regionDisplay && (
               <span className="status-value ok">
                 <span className="region-flag">{regionDisplay.flag}</span>
@@ -114,20 +114,20 @@ export default function RegionCard() {
             )}
           </div>
           <div className="status-item">
-            <span className="status-label">Latency:</span>
+            <span className="status-label">지연시간:</span>
             <span className="status-value ok">{latency}ms</span>
           </div>
           <div className="status-item">
-            <span className="status-label">Status:</span>
+            <span className="status-label">상태:</span>
             <span className={`status-value ${isOk ? 'ok' : 'error'}`}>
-              <span className="status-icon">{isOk ? '✅' : '❌'}</span> {result.status?.toUpperCase()}
+              <span className="status-icon">{isOk ? '✅' : '❌'}</span> {isOk ? '정상' : '오류'}
             </span>
           </div>
           {result.db && (
             <div className="status-item">
               <span className="status-label">DB:</span>
               <span className={`status-value ${dbOk ? 'ok' : 'error'}`}>
-                <span className="status-icon">{dbOk ? '✅' : '❌'}</span> {dbOk ? 'Connected' : 'Error'}
+                <span className="status-icon">{dbOk ? '✅' : '❌'}</span> {dbOk ? '연결됨' : '오류'}
               </span>
             </div>
           )}
