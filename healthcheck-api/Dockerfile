@@ -10,8 +10,8 @@ COPY package*.json ./
 # 프로덕션용 의존성 설치
 RUN npm install --only=production
 
-# Node.js 18버전에는 curl이 없을 수도 있어 curl설치
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+# curl, Apache Bench 설치
+RUN apt-get update && apt-get install -y curl apache2-utils && rm -rf /var/lib/apt/lists/*
 
 # 나머지 소스 코드 복사
 COPY . .
