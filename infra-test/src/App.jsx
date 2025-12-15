@@ -31,15 +31,15 @@ export default function App() {
       </section>
 
       <section className="section">
+        <TestLogger />
+      </section>
+
+      <section className="section">
         <h2 className="section-title">Individual Tests</h2>
         <div className="cards-container">
           <RegionCard />
           <IdcCard />
         </div>
-      </section>
-
-      <section className="section">
-        <TestLogger />
       </section>
     </div>
   )
