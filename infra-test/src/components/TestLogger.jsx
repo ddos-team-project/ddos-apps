@@ -96,7 +96,7 @@ export default function TestLogger() {
     <div className="test-logger">
       <div className="logger-header" onClick={() => setIsOpen(!isOpen)}>
         <h3>
-          Test Logs
+          테스트 로그
           <span className="log-count">({logs.length})</span>
         </h3>
         <span className={`toggle-icon ${isOpen ? 'open' : ''}`}>▼</span>
@@ -128,13 +128,13 @@ export default function TestLogger() {
                 className={filter === 'seoul' ? 'active' : ''}
                 onClick={() => setFilter('seoul')}
               >
-                🇰🇷 Seoul
+                🇰🇷 서울
               </button>
               <button
                 className={filter === 'tokyo' ? 'active' : ''}
                 onClick={() => setFilter('tokyo')}
               >
-                🇯🇵 Tokyo
+                🇯🇵 도쿄
               </button>
             </div>
             <button className="clear-btn" onClick={handleClear}>
@@ -144,13 +144,13 @@ export default function TestLogger() {
 
           <div className="log-table">
             <div className="log-header">
-              <span>Time</span>
-              <span>Type</span>
-              <span>Region</span>
-              <span>Instance</span>
-              <span>Status</span>
-              <span>Latency</span>
-              <span>Details</span>
+              <span>시간</span>
+              <span>유형</span>
+              <span>리전</span>
+              <span>인스턴스</span>
+              <span>상태</span>
+              <span>지연시간</span>
+              <span>상세</span>
             </div>
             <div className="log-body">
               {filteredLogs.length === 0 ? (

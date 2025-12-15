@@ -205,17 +205,17 @@ const ArchitectureDiagram = forwardRef(function ArchitectureDiagram({ compact = 
   return (
     <div className={`architecture-diagram ${compact ? 'compact' : ''}`}>
       <div className="diagram-header">
-        <h3>Infrastructure Flow</h3>
+        <h3>인프라 흐름</h3>
         {!compact && (
           <div className="diagram-controls">
             <button onClick={() => runTest('ping')} disabled={loading}>
-              {loading ? 'Testing...' : 'Ping Test'}
+              {loading ? '테스트 중...' : 'Ping 테스트'}
             </button>
             <button onClick={() => runTest('health')} disabled={loading}>
-              Health Test
+              Health 테스트
             </button>
             <button onClick={() => runTest('idc-health')} disabled={loading}>
-              IDC Test
+              IDC 테스트
             </button>
           </div>
         )}
@@ -225,7 +225,7 @@ const ArchitectureDiagram = forwardRef(function ArchitectureDiagram({ compact = 
         <div className="diagram-row">
           <div className={getNodeClass(nodeStatus.client)}>
             <div className="node-icon">👤</div>
-            <div className="node-label">Client</div>
+            <div className="node-label">클라이언트</div>
           </div>
 
           <div className="arrow">→</div>
@@ -243,7 +243,7 @@ const ArchitectureDiagram = forwardRef(function ArchitectureDiagram({ compact = 
 
           <div className="region-column">
             <div className="region-box seoul">
-              <div className="region-header">🇰🇷 Seoul (80%)</div>
+              <div className="region-header">🇰🇷 서울 (80%)</div>
               <div className="region-nodes">
                 <div className={getNodeClass(nodeStatus.seoulAlb)}>
                   <div className="node-label">ALB</div>
@@ -260,7 +260,7 @@ const ArchitectureDiagram = forwardRef(function ArchitectureDiagram({ compact = 
             </div>
 
             <div className="region-box tokyo">
-              <div className="region-header">🇯🇵 Tokyo (20%)</div>
+              <div className="region-header">🇯🇵 도쿄 (20%)</div>
               <div className="region-nodes">
                 <div className={getNodeClass(nodeStatus.tokyoAlb)}>
                   <div className="node-label">ALB</div>
@@ -299,32 +299,32 @@ const ArchitectureDiagram = forwardRef(function ArchitectureDiagram({ compact = 
       {!compact && result && (
         <div className="diagram-result">
           <div className="result-item">
-            <span className="result-label">Routed to:</span>
+            <span className="result-label">라우팅:</span>
             <span className="result-value">{getRegionFromResult()}</span>
           </div>
           <div className="result-item">
-            <span className="result-label">Latency:</span>
+            <span className="result-label">지연시간:</span>
             <span className="result-value">{latency}ms</span>
           </div>
           {(result.location?.instanceId || result.sourceLocation?.instanceId) && (
             <div className="result-item">
-              <span className="result-label">Instance:</span>
+              <span className="result-label">인스턴스:</span>
               <span className="result-value instance-info">
                 {(result.location?.instanceId || result.sourceLocation?.instanceId)?.slice(-8)}
               </span>
             </div>
           )}
           <div className="result-item">
-            <span className="result-label">Status:</span>
+            <span className="result-label">상태:</span>
             <span className={`result-value ${result.status === 'ok' ? 'ok' : 'error'}`}>
-              {result.status === 'ok' ? '✅ OK' : '❌ Error'}
+              {result.status === 'ok' ? '✅ 정상' : '❌ 오류'}
             </span>
           </div>
           {result.db && (
             <div className="result-item">
               <span className="result-label">DB:</span>
               <span className={`result-value ${result.db.status === 'ok' ? 'ok' : 'error'}`}>
-                {result.db.status === 'ok' ? '✅ Connected' : '❌ Error'}
+                {result.db.status === 'ok' ? '✅ 연결됨' : '❌ 오류'}
               </span>
             </div>
           )}
@@ -332,7 +332,7 @@ const ArchitectureDiagram = forwardRef(function ArchitectureDiagram({ compact = 
             <div className="result-item">
               <span className="result-label">IDC:</span>
               <span className={`result-value ${result.idc.status === 'ok' ? 'ok' : 'error'}`}>
-                {result.idc.status === 'ok' ? '✅ Connected' : '❌ Error'}
+                {result.idc.status === 'ok' ? '✅ 연결됨' : '❌ 오류'}
               </span>
             </div>
           )}

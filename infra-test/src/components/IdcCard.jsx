@@ -6,14 +6,14 @@ import { getApiUrl } from './api'
 
 
 function getRegionDisplay(region) {
-  if (!region) return { flag: '🌐', name: 'Unknown' }
+  if (!region) return { flag: '🌐', name: '알 수 없음' }
 
   if (region.includes('northeast-2') || region.toLowerCase().includes('seoul')) {
-    return { flag: '🇰🇷', name: 'SEOUL' }
+    return { flag: '🇰🇷', name: '서울' }
   }
 
   if (region.includes('northeast-1') || region.toLowerCase().includes('tokyo')) {
-    return { flag: '🇯🇵', name: 'TOKYO' }
+    return { flag: '🇯🇵', name: '도쿄' }
   }
 
   return { flag: '🌐', name: region.toUpperCase() }
@@ -76,16 +76,16 @@ export default function IdcCard() {
   return (
     <div className="card">
       <div className="card-header">
-        <h3 className="card-title">IDC Connection Test (Hybrid)</h3>
+        <h3 className="card-title">IDC 연결 테스트 (하이브리드)</h3>
         <span className="card-badge badge-idc">VPN</span>
       </div>
 
       <div className="endpoint-info route">
-        <span>Dashboard</span>
+        <span>대시보드</span>
         <span className="route-arrow">→</span>
         <span>AWS EC2</span>
         <span className="route-arrow">→</span>
-        <span>VPN Tunnel</span>
+        <span>VPN 터널</span>
         <span className="route-arrow">→</span>
         <span>IDC (192.168.0.10)</span>
       </div>
@@ -96,14 +96,14 @@ export default function IdcCard() {
           loading={loading}
           variant="idc"
         >
-          IDC Health Test
+          IDC 상태 테스트
         </TestButton>
       </div>
 
       {result && (
         <div className="status-row">
           <div className="status-item">
-            <span className="status-label">AWS Source:</span>
+            <span className="status-label">AWS 소스:</span>
             {sourceRegion && (
               <span className="status-value ok">
                 <span className="region-flag">{sourceRegion.flag}</span>
@@ -113,38 +113,38 @@ export default function IdcCard() {
             )}
           </div>
           <div className="status-item">
-            <span className="status-label">IDC Target:</span>
+            <span className="status-label">IDC 대상:</span>
             <span className={`status-value ${isOk ? 'ok' : 'error'}`}>
               {result.targetHost || '192.168.0.10'}
             </span>
           </div>
           <div className="status-item">
-            <span className="status-label">Total Latency:</span>
+            <span className="status-label">총 지연시간:</span>
             <span className="status-value ok">{latency}ms</span>
           </div>
           <div className="status-item">
-            <span className="status-label">VPN Latency:</span>
+            <span className="status-label">VPN 지연시간:</span>
             <span className={`status-value ${isOk ? 'ok' : 'error'}`}>
               {result.latencyMs || '-'}ms
             </span>
           </div>
           <div className="status-item">
-            <span className="status-label">Connection:</span>
+            <span className="status-label">연결 상태:</span>
             <span className={`status-value ${isOk ? 'ok' : 'error'}`}>
-              <span className="status-icon">{isOk ? '✅' : '❌'}</span> {isOk ? 'OK' : 'Error'}
+              <span className="status-icon">{isOk ? '✅' : '❌'}</span> {isOk ? '정상' : '오류'}
             </span>
           </div>
           {result.idc && (
             <div className="status-item">
-              <span className="status-label">IDC Status:</span>
+              <span className="status-label">IDC 상태:</span>
               <span className={`status-value ${idcOk ? 'ok' : 'error'}`}>
-                <span className="status-icon">{idcOk ? '✅' : '❌'}</span> {idcOk ? 'Healthy' : 'Unhealthy'}
+                <span className="status-icon">{idcOk ? '✅' : '❌'}</span> {idcOk ? '정상' : '비정상'}
               </span>
             </div>
           )}
           {result.error && (
             <div className="status-item">
-              <span className="status-label">Error:</span>
+              <span className="status-label">오류:</span>
               <span className="status-value error">{result.error}</span>
             </div>
           )}

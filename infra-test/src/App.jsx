@@ -17,9 +17,9 @@ export default function App() {
   return (
     <div className="dashboard">
       <header className="header">
-        <h1>Infra Test Dashboard</h1>
+        <h1>인프라 테스트 대시보드</h1>
         <p className="subtitle">
-          AWS Multi-Region (Seoul/Tokyo) + IDC VPN Connection Test
+          AWS 멀티 리전(서울/도쿄) + IDC VPN 연결 테스트
         </p>
       </header>
 
@@ -35,7 +35,7 @@ export default function App() {
       </section>
 
       <section className="section">
-        <h2 className="section-title">Individual Tests</h2>
+        <h2 className="section-title">개별 테스트</h2>
         <div className="cards-container">
           <RegionCard />
           <IdcCard />
