@@ -1024,3 +1024,376 @@ body {
 .architecture-diagram.compact .arrow-split {
   font-size: 1rem;
 }
+
+/* ========================================
+   App Layout with Sidebar
+   ======================================== */
+
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 220px;
+  background: rgba(0, 0, 0, 0.3);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+}
+
+.sidebar-header {
+  padding: 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-header h2 {
+  font-size: 1.2rem;
+  color: #64ffda;
+  font-weight: 600;
+}
+
+.sidebar-menu {
+  list-style: none;
+  padding: 1rem 0;
+  flex: 1;
+}
+
+.sidebar-menu li {
+  margin-bottom: 0.25rem;
+}
+
+.sidebar-menu a {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1.5rem;
+  color: #8892b0;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  border-left: 3px solid transparent;
+}
+
+.sidebar-menu a:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #ccd6f6;
+}
+
+.sidebar-menu a.active {
+  background: rgba(100, 255, 218, 0.1);
+  color: #64ffda;
+  border-left-color: #64ffda;
+}
+
+.menu-icon {
+  font-size: 1.2rem;
+}
+
+.menu-text {
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+/* Main Content */
+.main-content {
+  flex: 1;
+  margin-left: 220px;
+  padding: 2rem;
+  max-width: calc(100vw - 220px);
+}
+
+/* Page Content */
+.page-content {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.page-header {
+  margin-bottom: 2rem;
+}
+
+.page-header h1 {
+  font-size: 1.8rem;
+  color: #fff;
+  margin-bottom: 0.5rem;
+}
+
+.page-header .subtitle {
+  color: #8892b0;
+  font-size: 0.9rem;
+}
+
+/* ========================================
+   Load Test Page
+   ======================================== */
+
+.load-test-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.load-test-card h3 {
+  font-size: 1.1rem;
+  color: #ccd6f6;
+  margin-bottom: 1.5rem;
+}
+
+.config-group {
+  margin-bottom: 1.5rem;
+}
+
+.config-group label {
+  display: block;
+  color: #8892b0;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.button-group {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.button-group button {
+  padding: 0.6rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: transparent;
+  color: #8892b0;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s ease;
+}
+
+.button-group button:hover {
+  border-color: rgba(100, 255, 218, 0.3);
+  color: #ccd6f6;
+}
+
+.button-group button.active {
+  background: rgba(100, 255, 218, 0.1);
+  border-color: #64ffda;
+  color: #64ffda;
+}
+
+.button-group button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.config-summary {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.config-summary code {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 0.85rem;
+  color: #64ffda;
+}
+
+.run-test-btn {
+  width: 100%;
+  padding: 1rem;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.run-test-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+}
+
+.run-test-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Result Card */
+.result-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 1px solid rgba(100, 255, 218, 0.2);
+}
+
+.result-card h3 {
+  font-size: 1.1rem;
+  color: #64ffda;
+  margin-bottom: 1.5rem;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.result-grid .result-item {
+  background: rgba(0, 0, 0, 0.2);
+  padding: 1rem;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.result-grid .result-label {
+  color: #8892b0;
+  font-size: 0.8rem;
+}
+
+.result-grid .result-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #ccd6f6;
+}
+
+.result-grid .result-value.highlight {
+  color: #64ffda;
+}
+
+.result-grid .result-value.error {
+  color: #ff6b6b;
+}
+
+.raw-output {
+  margin-top: 1rem;
+}
+
+.raw-output summary {
+  cursor: pointer;
+  color: #8892b0;
+  font-size: 0.85rem;
+  padding: 0.5rem;
+}
+
+.raw-output summary:hover {
+  color: #ccd6f6;
+}
+
+.raw-output pre {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1rem;
+  border-radius: 8px;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 0.75rem;
+  color: #ccd6f6;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  max-height: 300px;
+  overflow-y: auto;
+  margin-top: 0.5rem;
+}
+
+/* Error Card */
+.error-card {
+  background: rgba(255, 107, 107, 0.1);
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 1px solid rgba(255, 107, 107, 0.3);
+}
+
+.error-card h3 {
+  font-size: 1rem;
+  color: #ff6b6b;
+  margin-bottom: 0.5rem;
+}
+
+.error-card p {
+  color: #ccd6f6;
+  font-size: 0.9rem;
+}
+
+/* Info Card */
+.info-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.info-card h3 {
+  font-size: 1rem;
+  color: #ccd6f6;
+  margin-bottom: 1rem;
+}
+
+.scenario-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.scenario-table th,
+.scenario-table td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.scenario-table th {
+  color: #8892b0;
+  font-weight: 500;
+}
+
+.scenario-table td {
+  color: #ccd6f6;
+}
+
+.scenario-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 60px;
+  }
+
+  .sidebar-header h2 {
+    display: none;
+  }
+
+  .sidebar-header {
+    padding: 1rem;
+    text-align: center;
+  }
+
+  .menu-text {
+    display: none;
+  }
+
+  .sidebar-menu a {
+    padding: 1rem;
+    justify-content: center;
+  }
+
+  .main-content {
+    margin-left: 60px;
+    padding: 1rem;
+    max-width: calc(100vw - 60px);
+  }
+
+  .result-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
