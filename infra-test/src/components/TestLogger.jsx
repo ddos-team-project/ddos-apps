@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 
 const STORAGE_KEY = 'infra-test-logs'
-const MAX_LOGS = 100
+const MAX_LOGS = 1000
 
 export function saveLog(logEntry) {
   try {
