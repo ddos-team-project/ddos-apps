@@ -233,33 +233,6 @@ export default function RoutingTest({ onFlowTrigger }) {
         </div>
       )}
 
-      {history.length > 0 && (
-        <div className="routing-history">
-          <h4>요청 히스토리</h4>
-          <div className="history-table">
-            <div className="history-header">
-              <span>#</span>
-              <span>Region</span>
-              <span>AZ</span>
-              <span>Instance</span>
-              <span>Latency</span>
-              <span>Time</span>
-            </div>
-            <div className="history-body">
-              {history.slice(-10).reverse().map((item) => (
-                <div key={item.index} className={`history-row ${item.region}`}>
-                  <span>{item.index}</span>
-                  <span>{item.region === 'seoul' ? '🇰🇷 Seoul' : item.region === 'tokyo' ? '🇯🇵 Tokyo' : '❓'}</span>
-                  <span>{item.az}</span>
-                  <span className="instance-info" title={item.privateIp}>{item.instanceId?.slice(-8) || '-'}</span>
-                  <span>{item.latency}ms</span>
-                  <span>{item.timestamp}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
