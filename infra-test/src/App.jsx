@@ -1,46 +1,19 @@
-import React, { useRef } from 'react'
-import ArchitectureDiagram from './components/ArchitectureDiagram'
-import RoutingTest from './components/RoutingTest'
-import RegionCard from './components/RegionCard'
-import IdcCard from './components/IdcCard'
-import TestLogger from './components/TestLogger'
+import React from 'react'
+import { Routes, Route } from 'react-router-dom'
+import Sidebar from './components/Sidebar'
+import ConnectionTest from './pages/ConnectionTest'
+import LoadTest from './pages/LoadTest'
 
 export default function App() {
-  const diagramRef = useRef(null)
-
-  const handleFlowTrigger = (region) => {
-    if (diagramRef.current) {
-      diagramRef.current.triggerFlow(region)
-    }
-  }
-
   return (
-    <div className="dashboard">
-      <header className="header">
-        <h1>인프라 테스트 대시보드</h1>
-        <p className="subtitle">
-          AWS 멀티 리전(서울/도쿄) + IDC VPN 연결 테스트
-        </p>
-      </header>
-
-      <section className="section">
-        <div className="flow-routing-row">
-          <ArchitectureDiagram ref={diagramRef} />
-          <RoutingTest onFlowTrigger={handleFlowTrigger} />
-        </div>
-      </section>
-
-      <section className="section">
-        <TestLogger />
-      </section>
-
-      <section className="section">
-        <h2 className="section-title">개별 테스트</h2>
-        <div className="cards-container">
-          <RegionCard />
-          <IdcCard />
-        </div>
-      </section>
+    <div className="app-layout">
+      <Sidebar />
+      <main className="main-content">
+        <Routes>
+          <Route path="/" element={<ConnectionTest />} />
+          <Route path="/load-test" element={<LoadTest />} />
+        </Routes>
+      </main>
     </div>
   )
 }
