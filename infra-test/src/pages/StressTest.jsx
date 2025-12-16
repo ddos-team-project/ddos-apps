@@ -1,11 +1,10 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { getApiUrl, getSeoulApiUrl, getTokyoApiUrl } from '../components/api'
 
 export default function StressTest() {
-  // CPU Stress State
-  const [cpuConfig, setCpuConfig] = useState({ seconds: 30, intensity: null })
-  const [cpuLoading, setCpuLoading] = useState(false)
-  const [cpuResult, setCpuResult] = useState(null)
+  // DB Info State
+  const [dbInfo, setDbInfo] = useState(null)
+  const [dbInfoLoading, setDbInfoLoading] = useState(false)
 
   // DB Stress State
   const [dbConfig, setDbConfig] = useState({ operations: 1000, concurrency: 10, type: 'mixed' })
@@ -29,28 +28,21 @@ export default function StressTest() {
 
   const [error, setError] = useState(null)
 
-  // CPU Stress Test
-  const runCpuStress = async () => {
-    setCpuLoading(true)
-    setCpuResult(null)
-    setError(null)
+  // Fetch DB Info on mount
+  useEffect(() => {
+    fetchDbInfo()
+  }, [])
 
+  const fetchDbInfo = async () => {
+    setDbInfoLoading(true)
     try {
-      const params = new URLSearchParams({ seconds: cpuConfig.seconds })
-      if (cpuConfig.intensity) params.append('intensity', cpuConfig.intensity)
-
-      const response = await fetch(`${getApiUrl()}/stress?${params}`)
+      const response = await fetch(`${getApiUrl()}/db-info`)
       const data = await response.json()
-
-      if (data.status === 'ok') {
-        setCpuResult(data)
-      } else {
-        setError(data.message || data.error || 'CPU 스트레스 테스트 실패')
-      }
+      setDbInfo(data)
     } catch (err) {
-      setError(err.message)
+      console.error('DB Info fetch error:', err)
     } finally {
-      setCpuLoading(false)
+      setDbInfoLoading(false)
     }
   }
 
@@ -218,13 +210,6 @@ export default function StressTest() {
     }
   }
 
-  const secondsOptions = [10, 30, 60, 120]
-  const intensityOptions = [
-    { value: null, label: '전체 코어' },
-    { value: 1, label: '1코어' },
-    { value: 2, label: '2코어' },
-    { value: 4, label: '4코어' },
-  ]
   const operationsOptions = [500, 1000, 5000]
   const concurrencyOptions = [5, 10, 20]
   const dbTypeOptions = [
@@ -240,12 +225,18 @@ export default function StressTest() {
   const tokyoWriteOpsOptions = [10, 50, 100]
   const crossRegionIterOptions = [3, 5, 10]
 
+  const getStatusBadge = (status) => {
+    if (status === 'ok') return <span className="status-badge ok">OK</span>
+    if (status === 'error') return <span className="status-badge error">ERROR</span>
+    return <span className="status-badge pending">N/A</span>
+  }
+
   return (
     <div className="page-content">
       <header className="page-header">
-        <h1>스트레스 테스트</h1>
+        <h1>DB 테스트</h1>
         <p className="subtitle">
-          CPU, DB, RPO 스트레스 테스트로 ASG 오토스케일링 및 Aurora 복제 지연 측정
+          Aurora DB 부하 테스트 및 복제 지연 측정
         </p>
       </header>
 
@@ -258,70 +249,49 @@ export default function StressTest() {
         </section>
       )}
 
-      {/* CPU Stress Test */}
+      {/* DB Info */}
       <section className="section">
-        <div className="load-test-card">
-          <h3>CPU 스트레스 테스트</h3>
-          <p className="card-desc">Worker Threads + crypto.pbkdf2로 실제 멀티코어 CPU 부하 생성</p>
-
-          <div className="config-group">
-            <label>실행 시간</label>
-            <div className="button-group">
-              {secondsOptions.map(sec => (
-                <button
-                  key={sec}
-                  className={cpuConfig.seconds === sec ? 'active' : ''}
-                  onClick={() => setCpuConfig(prev => ({ ...prev, seconds: sec }))}
-                  disabled={cpuLoading}
-                >
-                  {sec}초
-                </button>
-              ))}
-            </div>
+        <div className="load-test-card db-info-card">
+          <div className="db-info-header">
+            <h3>DB 연결 정보</h3>
+            <button
+              className="refresh-btn"
+              onClick={fetchDbInfo}
+              disabled={dbInfoLoading}
+            >
+              {dbInfoLoading ? '조회 중...' : '새로고침'}
+            </button>
           </div>
 
-          <div className="config-group">
-            <label>코어 수 (intensity)</label>
-            <div className="button-group">
-              {intensityOptions.map(opt => (
-                <button
-                  key={opt.value ?? 'all'}
-                  className={cpuConfig.intensity === opt.value ? 'active' : ''}
-                  onClick={() => setCpuConfig(prev => ({ ...prev, intensity: opt.value }))}
-                  disabled={cpuLoading}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          {dbInfo?.databases && (
+            <div className="db-info-grid">
+              <div className="db-info-item">
+                <div className="db-info-label">
+                  <span className="db-role">Writer</span>
+                  {getStatusBadge(dbInfo.databases.writer?.status)}
+                </div>
+                <div className="db-info-host">
+                  {dbInfo.databases.writer?.host || '-'}
+                </div>
+              </div>
 
-          <button
-            className="run-test-btn"
-            onClick={runCpuStress}
-            disabled={cpuLoading}
-          >
-            {cpuLoading ? 'CPU 스트레스 실행 중...' : 'CPU 스트레스 실행'}
-          </button>
+              <div className="db-info-item">
+                <div className="db-info-label">
+                  <span className="db-role">Reader</span>
+                  {getStatusBadge(dbInfo.databases.reader?.status)}
+                </div>
+                <div className="db-info-host">
+                  {dbInfo.databases.reader?.host || '-'}
+                </div>
+              </div>
 
-          {cpuResult && (
-            <div className="result-inline">
-              <div className="result-grid">
-                <div className="result-item">
-                  <span className="result-label">사용 코어</span>
-                  <span className="result-value">{cpuResult.workersUsed}</span>
+              <div className="db-info-item tokyo">
+                <div className="db-info-label">
+                  <span className="db-role">Tokyo Reader</span>
+                  {getStatusBadge(dbInfo.databases.tokyoReader?.status)}
                 </div>
-                <div className="result-item">
-                  <span className="result-label">총 코어</span>
-                  <span className="result-value">{cpuResult.cpuCount}</span>
-                </div>
-                <div className="result-item">
-                  <span className="result-label">소요 시간</span>
-                  <span className="result-value highlight">{(cpuResult.elapsedMs / 1000).toFixed(1)}초</span>
-                </div>
-                <div className="result-item">
-                  <span className="result-label">위치</span>
-                  <span className="result-value">{cpuResult.location?.region || '-'}</span>
+                <div className="db-info-host">
+                  {dbInfo.databases.tokyoReader?.host || '-'}
                 </div>
               </div>
             </div>
@@ -495,10 +465,6 @@ export default function StressTest() {
                   <span className="result-value">{rpoResult.p95LagMs}ms</span>
                 </div>
               </div>
-              <div className="host-info">
-                <p>Writer: {rpoResult.writerHost}</p>
-                <p>Reader: {rpoResult.readerHost}</p>
-              </div>
             </div>
           )}
         </div>
@@ -628,7 +594,7 @@ export default function StressTest() {
 
       <section className="section">
         <div className="info-card">
-          <h3>스트레스 테스트 가이드</h3>
+          <h3>테스트 가이드</h3>
           <table className="scenario-table">
             <thead>
               <tr>
@@ -638,11 +604,6 @@ export default function StressTest() {
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td>CPU Stress</td>
-                <td>CPU 기반 ASG 스케일 아웃</td>
-                <td>70-80% CPU 도달 시 인스턴스 증가</td>
-              </tr>
               <tr>
                 <td>DB Stress</td>
                 <td>Aurora DB 부하 테스트</td>

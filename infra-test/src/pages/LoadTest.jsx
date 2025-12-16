@@ -6,6 +6,7 @@ export default function LoadTest() {
     target: 'seoul',
     requests: 1000,
     concurrency: 50,
+    mode: 'light',
   })
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
@@ -16,6 +17,10 @@ export default function LoadTest() {
     { value: 'tokyo', label: '도쿄 (ap-northeast-1)' },
   ]
 
+  const modeOptions = [
+    { value: 'light', label: 'Light (/ping)', desc: '네트워크/ALB 테스트' },
+    { value: 'heavy', label: 'Heavy (/stress)', desc: '오토스케일 테스트' },
+  ]
   const requestOptions = [1000, 5000, 10000]
   const concurrencyOptions = [10, 50, 100]
 
@@ -59,6 +64,26 @@ export default function LoadTest() {
       <section className="section">
         <div className="load-test-card">
           <h3>테스트 설정</h3>
+
+          <div className="config-group">
+            <label>테스트 모드</label>
+            <div className="button-group">
+              {modeOptions.map(opt => (
+                <button
+                  key={opt.value}
+                  className={config.mode === opt.value ? 'active' : ''}
+                  onClick={() => setConfig(prev => ({ ...prev, mode: opt.value }))}
+                  disabled={loading}
+                  title={opt.desc}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="config-hint">
+              {config.mode === 'light' ? '가벼운 요청으로 네트워크/ALB 성능 측정' : 'CPU 부하를 주어 오토스케일링 트리거'}
+            </p>
+          </div>
 
           <div className="config-group">
             <label>대상 리전</label>
@@ -110,7 +135,7 @@ export default function LoadTest() {
 
           <div className="config-summary">
             <code>
-              ab -n {config.requests} -c {config.concurrency} https://{config.target === 'seoul' ? 'seoul' : 'tokyo'}-alb.ddos.io.kr/ping
+              ab -n {config.requests} -c {config.concurrency} https://tier1.ddos.io.kr{config.mode === 'heavy' ? '/stress?seconds=5' : '/ping'}
             </code>
           </div>
 

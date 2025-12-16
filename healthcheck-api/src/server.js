@@ -3,7 +3,7 @@ const cors = require('cors');
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const { getLocation } = require('./instanceLocation');
-const { checkDbHealth } = require('./dbHealth');
+const { checkDbHealth, getWriterPool, getReaderPool, getTokyoReaderPool } = require('./dbHealth');
 const { runCpuStress } = require('./cpuStress');
 const { runDbStress, cleanupTestData } = require('./dbStress');
 const { runRpoTest, runGlobalRpoTest } = require('./rpoTest');
@@ -52,8 +52,53 @@ app.get('/ping', async (req, res) => {
   });
 });
 
+// DB 정보 조회
+app.get('/db-info', async (req, res) => {
+  const location = await getLocation();
 
-// CPU 부하 테스트 (Worker Threads 기반 멀티코어)
+  const checkConnection = async (getPool, name) => {
+    try {
+      const pool = getPool();
+      const conn = await pool.getConnection();
+      await conn.query('SELECT 1');
+      conn.release();
+      return { status: 'ok' };
+    } catch (err) {
+      return { status: 'error', error: err.message };
+    }
+  };
+
+  const writer = {
+    host: process.env.DB_HOST || null,
+    ...(process.env.DB_HOST ? await checkConnection(getWriterPool, 'writer') : { status: 'not_configured' }),
+  };
+
+  const reader = {
+    host: process.env.DB_READER_HOST || process.env.DB_HOST || null,
+    ...(process.env.DB_HOST ? await checkConnection(getReaderPool, 'reader') : { status: 'not_configured' }),
+  };
+
+  let tokyoReader = { host: null, status: 'not_configured' };
+  if (process.env.DB_TOKYO_READER_HOST) {
+    tokyoReader = {
+      host: process.env.DB_TOKYO_READER_HOST,
+      ...await checkConnection(getTokyoReaderPool, 'tokyoReader'),
+    };
+  }
+
+  res.json({
+    status: 'ok',
+    location,
+    databases: {
+      writer,
+      reader,
+      tokyoReader,
+    },
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// CPU 부하 테스트 (Worker Threads 기반 멀티코어) - 내부용, 부하테스트에서 호출
 app.get('/stress', async (req, res) => {
   if (!ALLOW_STRESS) {
     return res.status(403).json({ status: 'forbidden', message: 'stress endpoint disabled' });
@@ -275,11 +320,15 @@ app.post('/load-test', async (req, res) => {
     });
   }
 
-  const { target = 'seoul', requests = 1000, concurrency = 50 } = req.body;
+  const { target = 'seoul', requests = 1000, concurrency = 50, mode = 'light' } = req.body;
 
   // 입력 유효성 검사
   if (!['seoul', 'tokyo'].includes(target)) {
     return res.status(400).json({ status: 'error', error: 'target은 seoul 또는 tokyo여야 합니다.' });
+  }
+
+  if (!['light', 'heavy'].includes(mode)) {
+    return res.status(400).json({ status: 'error', error: 'mode는 light 또는 heavy여야 합니다.' });
   }
 
   if (requests < 100 || requests > 50000) {
@@ -293,10 +342,13 @@ app.post('/load-test', async (req, res) => {
   const targetUrl = target === 'seoul' ? SEOUL_ALB_URL : TOKYO_ALB_URL;
   const location = await getLocation();
 
+  // mode에 따라 엔드포인트 결정
+  const endpoint = mode === 'heavy' ? '/stress?seconds=5' : '/ping';
+
   try {
     // ab 명령어 실행
-    const command = `ab -n ${requests} -c ${concurrency} -s 30 ${targetUrl}/ping 2>&1`;
-    console.log(`[LOAD-TEST] Running: ${command}`);
+    const command = `ab -n ${requests} -c ${concurrency} -s 30 "${targetUrl}${endpoint}" 2>&1`;
+    console.log(`[LOAD-TEST] Running (${mode}): ${command}`);
 
     const { stdout } = await execAsync(command, { timeout: 300000 }); // 5분 타임아웃
 
@@ -307,6 +359,8 @@ app.post('/load-test', async (req, res) => {
       status: 'ok',
       target,
       targetUrl,
+      mode,
+      endpoint,
       sourceLocation: location,
       ...result,
       raw: stdout,
