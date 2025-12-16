@@ -48,13 +48,27 @@ function getWriterPool() {
     throw new Error(`missing env: ${missing.join(', ')}`);
   }
 
-  writerPool = mysql.createPool({
+  const pool = mysql.createPool({
     ...DB_WRITER_CONFIG,
     waitForConnections: true,
     connectionLimit: 20,
     queueLimit: 0,
   });
 
+  // Aurora Global Database Write Forwarding 활성화
+  // Secondary 클러스터에서 쓰기 시 Primary로 전달
+  const originalGetConnection = pool.getConnection.bind(pool);
+  pool.getConnection = async function () {
+    const conn = await originalGetConnection();
+    try {
+      await conn.query("SET aurora_replica_read_consistency = 'SESSION'");
+    } catch (e) {
+      // Primary 클러스터에서는 이 변수가 없을 수 있음
+    }
+    return conn;
+  };
+
+  writerPool = pool;
   return writerPool;
 }
 
