@@ -56,7 +56,7 @@ app.get('/ping', async (req, res) => {
 
 // 실제 CPU 부하 테스트 (요청당 해시 계산)
 app.get('/work', async (req, res) => {
-  const iterations = Number(req.query.iterations) || 50000;
+  const iterations = Number(req.query.iterations) || 500000;
   const location = await getLocation();
   
   // 해시 계산 반복 (실제 CPU 사용)
