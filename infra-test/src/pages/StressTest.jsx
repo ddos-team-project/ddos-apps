@@ -125,25 +125,91 @@ export default function StressTest() {
     }
   }
 
-  // Cross-Region Test (Seoul Write → Tokyo Read) - 서버의 global-rpo-test API 사용
+  // Cross-Region Test (Seoul Write → Tokyo Read) - 마커 기반 API 사용
   const runCrossRegionTest = async () => {
     setCrossRegionLoading(true)
     setCrossRegionResult(null)
     setError(null)
 
-    try {
-      const response = await fetch(`${getSeoulApiUrl()}/global-rpo-test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ iterations: crossRegionConfig.iterations }),
-      })
-      const data = await response.json()
+    const results = []
+    const errors = []
 
-      if (data.status === 'ok') {
-        setCrossRegionResult(data)
-      } else {
-        setError(data.message || data.error || '모든 Cross-Region 측정 실패')
+    try {
+      for (let i = 0; i < crossRegionConfig.iterations; i++) {
+        const writeStart = Date.now()
+
+        // 1. Seoul에 마커 Write
+        const writeRes = await fetch(`${getSeoulApiUrl()}/write-marker`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        })
+        const writeData = await writeRes.json()
+
+        if (writeData.status !== 'ok') {
+          errors.push(`Write failed: ${writeData.error}`)
+          continue
+        }
+
+        const markerId = writeData.markerId
+
+        // 2. Tokyo에서 마커 Read 폴링 (최대 30초)
+        const maxWait = 30000
+        const pollInterval = 50
+        let found = false
+
+        while (Date.now() - writeStart < maxWait) {
+          try {
+            const readRes = await fetch(`${getTokyoApiUrl()}/read-marker?id=${markerId}`)
+            const readData = await readRes.json()
+
+            if (readData.status === 'ok' && readData.found) {
+              const lag = Date.now() - writeStart
+              results.push(lag)
+              found = true
+              break
+            }
+          } catch (e) {
+            // continue polling
+          }
+          await new Promise(r => setTimeout(r, pollInterval))
+        }
+
+        // 3. Seoul에서 마커 삭제 (cleanup)
+        try {
+          await fetch(`${getSeoulApiUrl()}/delete-marker?id=${markerId}`, { method: 'DELETE' })
+        } catch (e) {
+          // ignore cleanup error
+        }
+
+        if (!found) {
+          errors.push(`Iteration ${i + 1}: Timeout (30s)`)
+        }
+
+        // 측정 간 간격
+        if (i < crossRegionConfig.iterations - 1) {
+          await new Promise(r => setTimeout(r, 200))
+        }
       }
+
+      if (results.length === 0) {
+        setError('모든 Cross-Region 측정 실패')
+        return
+      }
+
+      const sorted = [...results].sort((a, b) => a - b)
+      setCrossRegionResult({
+        status: 'ok',
+        iterations: crossRegionConfig.iterations,
+        successful: results.length,
+        failed: errors.length,
+        avgLagMs: Math.round(results.reduce((a, b) => a + b, 0) / results.length),
+        minLagMs: sorted[0],
+        maxLagMs: sorted[sorted.length - 1],
+        medianLagMs: sorted[Math.floor(sorted.length / 2)],
+        p95LagMs: sorted[Math.floor(sorted.length * 0.95)] || sorted[sorted.length - 1],
+        allLagsMs: results,
+        errors: errors.length > 0 ? errors : undefined,
+      })
     } catch (err) {
       setError(err.message)
     } finally {
