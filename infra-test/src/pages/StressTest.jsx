@@ -125,84 +125,25 @@ export default function StressTest() {
     }
   }
 
-  // Cross-Region Test (Seoul Write → Tokyo Read)
+  // Cross-Region Test (Seoul Write → Tokyo Read) - 서버의 global-rpo-test API 사용
   const runCrossRegionTest = async () => {
     setCrossRegionLoading(true)
     setCrossRegionResult(null)
     setError(null)
 
-    const results = []
-    const errors = []
-
     try {
-      for (let i = 0; i < crossRegionConfig.iterations; i++) {
-        const markerId = `cross-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-        const writeStart = Date.now()
-
-        // 1. Seoul에 Write
-        const writeRes = await fetch(`${getSeoulApiUrl()}/db-stress`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ operations: 1, concurrency: 1, type: 'write' }),
-        })
-        const writeData = await writeRes.json()
-
-        if (writeData.status !== 'ok') {
-          errors.push(`Write failed: ${writeData.error}`)
-          continue
-        }
-
-        // 2. Tokyo에서 Read 시도 (최대 10초)
-        const maxWait = 10000
-        const pollInterval = 50
-        let found = false
-
-        while (Date.now() - writeStart < maxWait) {
-          try {
-            const readRes = await fetch(`${getTokyoApiUrl()}/health`, { method: 'GET' })
-            const readData = await readRes.json()
-
-            if (readData.status === 'ok' && readData.db?.status === 'ok') {
-              const lag = Date.now() - writeStart
-              results.push(lag)
-              found = true
-              break
-            }
-          } catch (e) {
-            // continue polling
-          }
-          await new Promise(r => setTimeout(r, pollInterval))
-        }
-
-        if (!found) {
-          errors.push(`Iteration ${i + 1}: Timeout`)
-        }
-
-        // 측정 간 간격
-        if (i < crossRegionConfig.iterations - 1) {
-          await new Promise(r => setTimeout(r, 200))
-        }
-      }
-
-      if (results.length === 0) {
-        setError('모든 Cross-Region 측정 실패')
-        return
-      }
-
-      const sorted = [...results].sort((a, b) => a - b)
-      setCrossRegionResult({
-        status: 'ok',
-        iterations: crossRegionConfig.iterations,
-        successful: results.length,
-        failed: errors.length,
-        avgLagMs: Math.round(results.reduce((a, b) => a + b, 0) / results.length),
-        minLagMs: sorted[0],
-        maxLagMs: sorted[sorted.length - 1],
-        medianLagMs: sorted[Math.floor(sorted.length / 2)],
-        p95LagMs: sorted[Math.floor(sorted.length * 0.95)] || sorted[sorted.length - 1],
-        allLagsMs: results,
-        errors: errors.length > 0 ? errors : undefined,
+      const response = await fetch(`${getSeoulApiUrl()}/global-rpo-test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ iterations: crossRegionConfig.iterations }),
       })
+      const data = await response.json()
+
+      if (data.status === 'ok') {
+        setCrossRegionResult(data)
+      } else {
+        setError(data.message || data.error || '모든 Cross-Region 측정 실패')
+      }
     } catch (err) {
       setError(err.message)
     } finally {
