@@ -165,14 +165,14 @@ export default function LoadTest() {
             <label>리전</label>
             <div className="button-group">
               <button
-                className={`btn ${region === 'seoul' ? 'btn-primary' : 'btn-secondary'}`}
+                className={region === 'seoul' ? 'active' : ''}
                 onClick={() => setRegion('seoul')}
                 disabled={isRunning}
               >
                 서울
               </button>
               <button
-                className={`btn ${region === 'tokyo' ? 'btn-primary' : 'btn-secondary'}`}
+                className={region === 'tokyo' ? 'active' : ''}
                 onClick={() => setRegion('tokyo')}
                 disabled={isRunning}
               >
@@ -187,7 +187,7 @@ export default function LoadTest() {
               {tpsOptions.map(opt => (
                 <button
                   key={opt.value}
-                  className={`btn ${tps === opt.value ? 'btn-primary' : 'btn-secondary'}`}
+                  className={tps === opt.value ? 'active' : ''}
                   onClick={() => setTps(opt.value)}
                   disabled={isRunning}
                 >
@@ -204,7 +204,7 @@ export default function LoadTest() {
               {durationOptions.map(opt => (
                 <button
                   key={opt.value}
-                  className={`btn ${duration === opt.value ? 'btn-primary' : 'btn-secondary'}`}
+                  className={duration === opt.value ? 'active' : ''}
                   onClick={() => setDuration(opt.value)}
                   disabled={isRunning}
                 >
