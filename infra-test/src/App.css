@@ -1404,6 +1404,20 @@ body {
   margin-bottom: 0;
 }
 
+/* Global RPO Card */
+.load-test-card.global-rpo {
+  border: 1px solid rgba(240, 147, 251, 0.3);
+  background: rgba(240, 147, 251, 0.05);
+}
+
+.run-test-btn.global {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+.run-test-btn.global:hover {
+  box-shadow: 0 4px 20px rgba(240, 147, 251, 0.4);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar {

@@ -16,8 +16,17 @@ const DB_READER_CONFIG = {
   database: process.env.DB_NAME,
 };
 
+const DB_TOKYO_READER_CONFIG = {
+  host: process.env.DB_TOKYO_READER_HOST,
+  port: Number(process.env.DB_PORT || 3306),
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+};
+
 let writerPool;
 let readerPool;
+let tokyoReaderPool;
 
 function getMissingDbConfig() {
   const missing = [];
@@ -68,6 +77,29 @@ function getReaderPool() {
   return readerPool;
 }
 
+function getTokyoReaderPool() {
+  if (tokyoReaderPool) return tokyoReaderPool;
+
+  if (!DB_TOKYO_READER_CONFIG.host) {
+    throw new Error('missing env: DB_TOKYO_READER_HOST');
+  }
+
+  const missing = getMissingDbConfig();
+  if (missing.length) {
+    throw new Error(`missing env: ${missing.join(', ')}`);
+  }
+
+  tokyoReaderPool = mysql.createPool({
+    ...DB_TOKYO_READER_CONFIG,
+    waitForConnections: true,
+    connectionLimit: 20,
+    queueLimit: 0,
+    connectTimeout: 10000,
+  });
+
+  return tokyoReaderPool;
+}
+
 // 기존 getPool은 writerPool로 대체 (하위 호환)
 function getPool() {
   return getWriterPool();
@@ -97,4 +129,4 @@ async function checkDbHealth() {
   }
 }
 
-module.exports = { checkDbHealth, getWriterPool, getReaderPool, getPool };
+module.exports = { checkDbHealth, getWriterPool, getReaderPool, getTokyoReaderPool, getPool };
