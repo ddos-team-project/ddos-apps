@@ -4,6 +4,9 @@ const { exec } = require('child_process');
 const { promisify } = require('util');
 const { getLocation } = require('./instanceLocation');
 const { checkDbHealth } = require('./dbHealth');
+const { runCpuStress } = require('./cpuStress');
+const { runDbStress, cleanupTestData } = require('./dbStress');
+const { runRpoTest } = require('./rpoTest');
 
 const execAsync = promisify(exec);
 const app = express();
@@ -20,6 +23,7 @@ const SERVICE_NAME = process.env.SERVICE_NAME || 'ddos-noncore-api';
 const APP_ENV = process.env.APP_ENV || 'dev';
 const IDC_HOST = process.env.IDC_HOST || '192.168.0.10';
 const IDC_PORT = process.env.IDC_PORT || '3000';
+const ALLOW_STRESS = process.env.ALLOW_STRESS === 'true';
 
 app.get('/health', async (req, res) => {
   const dbStatus = await checkDbHealth();
@@ -48,36 +52,140 @@ app.get('/ping', async (req, res) => {
   });
 });
 
-app.get('/stress', async (req, res) => {
-  const ALLOW_STRESS = process.env.ALLOW_STRESS === 'true';
 
+// CPU 부하 테스트 (Worker Threads 기반 멀티코어)
+app.get('/stress', async (req, res) => {
   if (!ALLOW_STRESS) {
     return res.status(403).json({ status: 'forbidden', message: 'stress endpoint disabled' });
   }
 
   const seconds = Number(req.query.seconds || 10);
+  const intensity = req.query.intensity ? Number(req.query.intensity) : null;
 
-  if (Number.isNaN(seconds) || seconds <= 0) {
-    return res.status(400).json({ status: 'bad_request', message: 'seconds must be > 0' });
+  if (Number.isNaN(seconds) || seconds <= 0 || seconds > 300) {
+    return res.status(400).json({ status: 'bad_request', message: 'seconds must be 1-300' });
   }
 
   const location = await getLocation();
-  const start = Date.now();
-  const end = start + seconds * 1000;
 
-  while (Date.now() < end) {
-    Math.sqrt(Math.random());
+  try {
+    console.log(`[CPU-STRESS] Starting: ${seconds}s, intensity: ${intensity || 'all cores'}`);
+    const result = await runCpuStress(seconds, intensity);
+
+    res.json({
+      status: 'ok',
+      ...result,
+      service: SERVICE_NAME,
+      env: APP_ENV,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('[CPU-STRESS] Error:', error.message);
+    res.status(500).json({
+      status: 'error',
+      error: error.message,
+      location,
+      timestamp: new Date().toISOString(),
+    });
   }
-
-  res.json({
-    status: 'ok',
-    elapsed_ms: Date.now() - start,
-    service: SERVICE_NAME,
-    env: APP_ENV,
-    location,
-  });
 });
 
+// DB 부하 테스트
+app.post('/db-stress', async (req, res) => {
+  if (!ALLOW_STRESS) {
+    return res.status(403).json({ status: 'forbidden', message: 'db-stress endpoint disabled' });
+  }
+
+  const { operations = 1000, concurrency = 10, type = 'mixed' } = req.body;
+
+  if (!['write', 'read', 'mixed'].includes(type)) {
+    return res.status(400).json({ status: 'bad_request', message: 'type must be write, read, or mixed' });
+  }
+
+  if (operations < 10 || operations > 10000) {
+    return res.status(400).json({ status: 'bad_request', message: 'operations must be 10-10000' });
+  }
+
+  if (concurrency < 1 || concurrency > 50) {
+    return res.status(400).json({ status: 'bad_request', message: 'concurrency must be 1-50' });
+  }
+
+  const location = await getLocation();
+
+  try {
+    console.log(`[DB-STRESS] Starting: ${operations} ops, concurrency: ${concurrency}, type: ${type}`);
+    const result = await runDbStress({ operations, concurrency, type });
+
+    res.json({
+      status: 'ok',
+      ...result,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('[DB-STRESS] Error:', error.message);
+    res.status(500).json({
+      status: 'error',
+      error: error.message,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// DB 테스트 데이터 정리
+app.post('/db-cleanup', async (req, res) => {
+  if (!ALLOW_STRESS) {
+    return res.status(403).json({ status: 'forbidden', message: 'db-cleanup endpoint disabled' });
+  }
+
+  const { testId } = req.body;
+
+  try {
+    const result = await cleanupTestData(testId);
+    res.json({ status: 'ok', ...result });
+  } catch (error) {
+    res.status(500).json({ status: 'error', error: error.message });
+  }
+});
+
+// RPO 테스트 (복제 지연 측정)
+app.post('/rpo-test', async (req, res) => {
+  if (!ALLOW_STRESS) {
+    return res.status(403).json({ status: 'forbidden', message: 'rpo-test endpoint disabled' });
+  }
+
+  const { iterations = 10 } = req.body;
+
+  if (iterations < 1 || iterations > 100) {
+    return res.status(400).json({ status: 'bad_request', message: 'iterations must be 1-100' });
+  }
+
+  const location = await getLocation();
+  const readerHost = process.env.DB_READER_HOST || process.env.DB_HOST;
+
+  try {
+    console.log(`[RPO-TEST] Starting: ${iterations} iterations`);
+    const result = await runRpoTest(iterations);
+
+    res.json({
+      ...result,
+      writerHost: process.env.DB_HOST,
+      readerHost,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('[RPO-TEST] Error:', error.message);
+    res.status(500).json({
+      status: 'error',
+      error: error.message,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
 app.get('/idc-health', async (req, res) => {
   const location = await getLocation();
   const start = Date.now();
@@ -119,15 +227,14 @@ app.get('/idc-health', async (req, res) => {
 });
 
 // 부하 테스트 엔드포인트
-const ALLOW_LOAD_TEST = process.env.ALLOW_STRESS === 'true';
 const SEOUL_ALB_URL = process.env.SEOUL_ALB_URL || 'https://tier1.ddos.io.kr';
 const TOKYO_ALB_URL = process.env.TOKYO_ALB_URL || 'https://tier1.ddos.io.kr';
 
 app.post('/load-test', async (req, res) => {
-  if (!ALLOW_LOAD_TEST) {
+  if (!ALLOW_STRESS) {
     return res.status(403).json({
       status: 'error',
-      error: '부하 테스트가 비활성화되어 있습니다. ALLOW_LOAD_TEST=true 설정이 필요합니다.',
+      error: '부하 테스트가 비활성화되어 있습니다. ALLOW_STRESS=true 설정이 필요합니다.',
     });
   }
 
