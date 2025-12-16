@@ -29,6 +29,12 @@ export default function LoadTest() {
   const abortRef = useRef(false)
   const timerRef = useRef(null)
 
+  
+  const albUrls = {
+    seoul: 'http://healthcheck-api-seoul-alb-164208498.ap-northeast-2.elb.amazonaws.com',
+    tokyo: 'http://healthcheck-api-tokyo-alb-376833905.ap-northeast-1.elb.amazonaws.com',
+  }
+
   const targetOptions = [
     { value: 'seoul', label: '서울 (ap-northeast-2)' },
     { value: 'tokyo', label: '도쿄 (ap-northeast-1)' },
@@ -348,7 +354,7 @@ export default function LoadTest() {
 
           <div className="config-summary">
             <code>
-              ab -n {config.requests} -c {config.concurrency} https://tier1.ddos.io.kr{config.mode === 'heavy' ? '/stress?seconds=5' : '/ping'}
+              ab -n {config.requests} -c {config.concurrency} {albUrls[config.target]}{config.mode === 'heavy' ? '/stress?seconds=5' : '/ping'}
               {continuousMode && ` (연속 ${duration}분)`}
             </code>
           </div>
