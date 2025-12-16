@@ -1363,6 +1363,47 @@ body {
   border-bottom: none;
 }
 
+/* ========================================
+   Stress Test Page
+   ======================================== */
+
+.card-desc {
+  color: #8892b0;
+  font-size: 0.85rem;
+  margin-bottom: 1.5rem;
+}
+
+.result-inline {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.test-id {
+  margin-top: 1rem;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 0.75rem;
+  color: #8892b0;
+}
+
+.host-info {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 0.75rem;
+}
+
+.host-info p {
+  color: #8892b0;
+  margin-bottom: 0.25rem;
+}
+
+.host-info p:last-child {
+  margin-bottom: 0;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar {

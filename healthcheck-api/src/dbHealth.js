@@ -1,6 +1,6 @@
 const mysql = require('mysql2/promise');
 
-const DB_CONFIG = {
+const DB_WRITER_CONFIG = {
   host: process.env.DB_HOST,
   port: Number(process.env.DB_PORT || 3306),
   user: process.env.DB_USER,
@@ -8,21 +8,30 @@ const DB_CONFIG = {
   database: process.env.DB_NAME,
 };
 
-let pool;
+const DB_READER_CONFIG = {
+  host: process.env.DB_READER_HOST || process.env.DB_HOST,
+  port: Number(process.env.DB_PORT || 3306),
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+};
+
+let writerPool;
+let readerPool;
 
 function getMissingDbConfig() {
   const missing = [];
 
-  if (!DB_CONFIG.host) missing.push('DB_HOST');
-  if (!DB_CONFIG.user) missing.push('DB_USER');
-  if (!DB_CONFIG.password) missing.push('DB_PASSWORD');
-  if (!DB_CONFIG.database) missing.push('DB_NAME');
+  if (!DB_WRITER_CONFIG.host) missing.push('DB_HOST');
+  if (!DB_WRITER_CONFIG.user) missing.push('DB_USER');
+  if (!DB_WRITER_CONFIG.password) missing.push('DB_PASSWORD');
+  if (!DB_WRITER_CONFIG.database) missing.push('DB_NAME');
 
   return missing;
 }
 
-function getPool() {
-  if (pool) return pool;
+function getWriterPool() {
+  if (writerPool) return writerPool;
 
   const missing = getMissingDbConfig();
 
@@ -30,14 +39,38 @@ function getPool() {
     throw new Error(`missing env: ${missing.join(', ')}`);
   }
 
-  pool = mysql.createPool({
-    ...DB_CONFIG,
+  writerPool = mysql.createPool({
+    ...DB_WRITER_CONFIG,
     waitForConnections: true,
-    connectionLimit: 5,
+    connectionLimit: 20,
     queueLimit: 0,
   });
 
-  return pool;
+  return writerPool;
+}
+
+function getReaderPool() {
+  if (readerPool) return readerPool;
+
+  const missing = getMissingDbConfig();
+
+  if (missing.length) {
+    throw new Error(`missing env: ${missing.join(', ')}`);
+  }
+
+  readerPool = mysql.createPool({
+    ...DB_READER_CONFIG,
+    waitForConnections: true,
+    connectionLimit: 20,
+    queueLimit: 0,
+  });
+
+  return readerPool;
+}
+
+// 기존 getPool은 writerPool로 대체 (하위 호환)
+function getPool() {
+  return getWriterPool();
 }
 
 async function checkDbHealth() {
@@ -48,7 +81,7 @@ async function checkDbHealth() {
   }
 
   try {
-    const conn = await getPool().getConnection();
+    const conn = await getWriterPool().getConnection();
 
     try {
       await conn.query('SELECT 1');
@@ -64,4 +97,4 @@ async function checkDbHealth() {
   }
 }
 
-module.exports = { checkDbHealth };
+module.exports = { checkDbHealth, getWriterPool, getReaderPool, getPool };
