@@ -28,6 +28,7 @@ export default function LoadTest() {
 
   const abortRef = useRef(false)
   const timerRef = useRef(null)
+  const abortControllerRef = useRef(null)
 
   
   const albUrls = {
@@ -100,19 +101,26 @@ export default function LoadTest() {
   }
 
   // 단일 테스트 실행
-  const runSingleTest = async () => {
+  const runSingleTest = async (overrideConfig = {}) => {
     try {
+      abortControllerRef.current = new AbortController()
+      const testConfig = { ...config, ...overrideConfig }
+
       const response = await fetch(`${getApiUrl()}/load-test`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(config),
+        body: JSON.stringify(testConfig),
+        signal: abortControllerRef.current.signal,
       })
 
       const data = await response.json()
       return data
     } catch (err) {
+      if (err.name === 'AbortError') {
+        return { error: 'cancelled', status: 'cancelled' }
+      }
       return { error: err.message, status: 'error' }
     }
   }
@@ -149,7 +157,8 @@ export default function LoadTest() {
     }, 1000)
 
     while (!abortRef.current && (Date.now() - startTime.getTime()) < durationMs) {
-      const data = await runSingleTest()
+      // 연속 모드에서는 요청 수를 줄여서 빠르게 반복
+      const data = await runSingleTest({ requests: Math.min(config.requests, 100) })
 
       if (abortRef.current) break
 
@@ -211,7 +220,8 @@ export default function LoadTest() {
     setError(null)
     setTestMeta({ startTime: new Date(), endTime: null })
 
-    const data = await runSingleTest()
+    // 연속 모드: 요청 수를 줄여서 빠르게 반복 (중지 반응성 향상)
+      const data = await runSingleTest({ requests: Math.min(config.requests, 100) })
 
     if (data.status === 'ok') {
       setResult(data)
@@ -227,9 +237,14 @@ export default function LoadTest() {
   // 테스트 중지
   const stopTest = () => {
     abortRef.current = true
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
     if (timerRef.current) {
       clearInterval(timerRef.current)
     }
+    setIsRunning(false)
+    setLoading(false)
   }
 
   // 컴포넌트 언마운트 시 정리
