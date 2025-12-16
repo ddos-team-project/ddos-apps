@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { getApiUrl } from '../components/api'
+import { getApiUrl, getSeoulApiUrl, getTokyoApiUrl } from '../components/api'
 
 export default function StressTest() {
   // CPU Stress State
@@ -12,15 +12,20 @@ export default function StressTest() {
   const [dbLoading, setDbLoading] = useState(false)
   const [dbResult, setDbResult] = useState(null)
 
-  // RPO Test State
-  const [rpoConfig, setRpoConfig] = useState({ iterations: 10 })
+  // RPO Test State (리전 선택 가능)
+  const [rpoConfig, setRpoConfig] = useState({ iterations: 10, region: 'seoul' })
   const [rpoLoading, setRpoLoading] = useState(false)
   const [rpoResult, setRpoResult] = useState(null)
 
-  // Global RPO Test State (Seoul → Tokyo)
-  const [globalRpoConfig, setGlobalRpoConfig] = useState({ iterations: 5 })
-  const [globalRpoLoading, setGlobalRpoLoading] = useState(false)
-  const [globalRpoResult, setGlobalRpoResult] = useState(null)
+  // Tokyo Write Test State (Write Forwarding 테스트)
+  const [tokyoWriteConfig, setTokyoWriteConfig] = useState({ operations: 10, type: 'write' })
+  const [tokyoWriteLoading, setTokyoWriteLoading] = useState(false)
+  const [tokyoWriteResult, setTokyoWriteResult] = useState(null)
+
+  // Cross-Region Test State (Seoul Write → Tokyo Read)
+  const [crossRegionConfig, setCrossRegionConfig] = useState({ iterations: 5 })
+  const [crossRegionLoading, setCrossRegionLoading] = useState(false)
+  const [crossRegionResult, setCrossRegionResult] = useState(null)
 
   const [error, setError] = useState(null)
 
@@ -75,22 +80,23 @@ export default function StressTest() {
     }
   }
 
-  // RPO Test
+  // RPO Test (리전 선택)
   const runRpoTest = async () => {
     setRpoLoading(true)
     setRpoResult(null)
     setError(null)
 
     try {
-      const response = await fetch(`${getApiUrl()}/rpo-test`, {
+      const apiUrl = rpoConfig.region === 'tokyo' ? getTokyoApiUrl() : getSeoulApiUrl()
+      const response = await fetch(`${apiUrl}/rpo-test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(rpoConfig),
+        body: JSON.stringify({ iterations: rpoConfig.iterations }),
       })
       const data = await response.json()
 
       if (data.status === 'ok') {
-        setRpoResult(data)
+        setRpoResult({ ...data, testedRegion: rpoConfig.region })
       } else {
         setError(data.message || data.error || 'RPO 테스트 실패')
       }
@@ -101,29 +107,114 @@ export default function StressTest() {
     }
   }
 
-  // Global RPO Test (Seoul → Tokyo)
-  const runGlobalRpoTest = async () => {
-    setGlobalRpoLoading(true)
-    setGlobalRpoResult(null)
+  // Tokyo Write Test (Write Forwarding 테스트)
+  const runTokyoWriteTest = async () => {
+    setTokyoWriteLoading(true)
+    setTokyoWriteResult(null)
     setError(null)
 
     try {
-      const response = await fetch(`${getApiUrl()}/global-rpo-test`, {
+      const response = await fetch(`${getTokyoApiUrl()}/db-stress`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(globalRpoConfig),
+        body: JSON.stringify(tokyoWriteConfig),
       })
       const data = await response.json()
 
       if (data.status === 'ok') {
-        setGlobalRpoResult(data)
+        setTokyoWriteResult(data)
       } else {
-        setError(data.message || data.error || 'Global RPO 테스트 실패')
+        setError(data.message || data.error || 'Tokyo Write 테스트 실패 (Write Forwarding 미동작 가능)')
       }
     } catch (err) {
       setError(err.message)
     } finally {
-      setGlobalRpoLoading(false)
+      setTokyoWriteLoading(false)
+    }
+  }
+
+  // Cross-Region Test (Seoul Write → Tokyo Read)
+  const runCrossRegionTest = async () => {
+    setCrossRegionLoading(true)
+    setCrossRegionResult(null)
+    setError(null)
+
+    const results = []
+    const errors = []
+
+    try {
+      for (let i = 0; i < crossRegionConfig.iterations; i++) {
+        const markerId = `cross-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        const writeStart = Date.now()
+
+        // 1. Seoul에 Write
+        const writeRes = await fetch(`${getSeoulApiUrl()}/db-stress`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ operations: 1, concurrency: 1, type: 'write' }),
+        })
+        const writeData = await writeRes.json()
+
+        if (writeData.status !== 'ok') {
+          errors.push(`Write failed: ${writeData.error}`)
+          continue
+        }
+
+        // 2. Tokyo에서 Read 시도 (최대 10초)
+        const maxWait = 10000
+        const pollInterval = 50
+        let found = false
+
+        while (Date.now() - writeStart < maxWait) {
+          try {
+            const readRes = await fetch(`${getTokyoApiUrl()}/health`, { method: 'GET' })
+            const readData = await readRes.json()
+
+            if (readData.status === 'ok' && readData.db?.status === 'ok') {
+              const lag = Date.now() - writeStart
+              results.push(lag)
+              found = true
+              break
+            }
+          } catch (e) {
+            // continue polling
+          }
+          await new Promise(r => setTimeout(r, pollInterval))
+        }
+
+        if (!found) {
+          errors.push(`Iteration ${i + 1}: Timeout`)
+        }
+
+        // 측정 간 간격
+        if (i < crossRegionConfig.iterations - 1) {
+          await new Promise(r => setTimeout(r, 200))
+        }
+      }
+
+      if (results.length === 0) {
+        setError('모든 Cross-Region 측정 실패')
+        return
+      }
+
+      const sorted = [...results].sort((a, b) => a - b)
+      setCrossRegionResult({
+        status: 'ok',
+        iterations: crossRegionConfig.iterations,
+        successful: results.length,
+        failed: errors.length,
+        avgLagMs: Math.round(results.reduce((a, b) => a + b, 0) / results.length),
+        minLagMs: sorted[0],
+        maxLagMs: sorted[sorted.length - 1],
+        medianLagMs: sorted[Math.floor(sorted.length / 2)],
+        p95LagMs: sorted[Math.floor(sorted.length * 0.95)] || sorted[sorted.length - 1],
+        allLagsMs: results,
+        errors: errors.length > 0 ? errors : undefined,
+      })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setCrossRegionLoading(false)
     }
   }
 
@@ -142,7 +233,12 @@ export default function StressTest() {
     { value: 'mixed', label: 'Mixed (7:3)' },
   ]
   const iterationsOptions = [5, 10, 20, 50]
-  const globalIterationsOptions = [3, 5, 10, 20]
+  const regionOptions = [
+    { value: 'seoul', label: 'Seoul' },
+    { value: 'tokyo', label: 'Tokyo' },
+  ]
+  const tokyoWriteOpsOptions = [10, 50, 100]
+  const crossRegionIterOptions = [3, 5, 10]
 
   return (
     <div className="page-content">
@@ -325,7 +421,23 @@ export default function StressTest() {
       <section className="section">
         <div className="load-test-card">
           <h3>RPO 테스트 (복제 지연 측정)</h3>
-          <p className="card-desc">Aurora Writer→Reader 복제 지연 시간 측정</p>
+          <p className="card-desc">Aurora Writer→Reader 복제 지연 시간 측정 (리전 선택 가능)</p>
+
+          <div className="config-group">
+            <label>리전</label>
+            <div className="button-group">
+              {regionOptions.map(opt => (
+                <button
+                  key={opt.value}
+                  className={rpoConfig.region === opt.value ? 'active' : ''}
+                  onClick={() => setRpoConfig(prev => ({ ...prev, region: opt.value }))}
+                  disabled={rpoLoading}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div className="config-group">
             <label>측정 횟수</label>
@@ -348,12 +460,16 @@ export default function StressTest() {
             onClick={runRpoTest}
             disabled={rpoLoading}
           >
-            {rpoLoading ? 'RPO 측정 중...' : 'RPO 테스트 실행'}
+            {rpoLoading ? 'RPO 측정 중...' : `RPO 테스트 실행 (${rpoConfig.region.toUpperCase()})`}
           </button>
 
           {rpoResult && (
             <div className="result-inline">
               <div className="result-grid">
+                <div className="result-item">
+                  <span className="result-label">리전</span>
+                  <span className="result-value">{rpoResult.testedRegion?.toUpperCase()}</span>
+                </div>
                 <div className="result-item">
                   <span className="result-label">성공</span>
                   <span className="result-value">{rpoResult.successful}/{rpoResult.iterations}</span>
@@ -388,21 +504,21 @@ export default function StressTest() {
         </div>
       </section>
 
-      {/* Global RPO Test (Seoul → Tokyo) */}
+      {/* Tokyo Write Test (Write Forwarding) */}
       <section className="section">
-        <div className="load-test-card global-rpo">
-          <h3>Global RPO 테스트 (크로스 리전)</h3>
-          <p className="card-desc">Seoul Primary Writer → Tokyo Secondary Reader 복제 지연 측정</p>
+        <div className="load-test-card tokyo-write">
+          <h3>Tokyo Write 테스트 (Write Forwarding)</h3>
+          <p className="card-desc">Tokyo Secondary → Seoul Primary Write Forwarding 동작 확인</p>
 
           <div className="config-group">
-            <label>측정 횟수</label>
+            <label>작업 수</label>
             <div className="button-group">
-              {globalIterationsOptions.map(num => (
+              {tokyoWriteOpsOptions.map(num => (
                 <button
                   key={num}
-                  className={globalRpoConfig.iterations === num ? 'active' : ''}
-                  onClick={() => setGlobalRpoConfig(prev => ({ ...prev, iterations: num }))}
-                  disabled={globalRpoLoading}
+                  className={tokyoWriteConfig.operations === num ? 'active' : ''}
+                  onClick={() => setTokyoWriteConfig(prev => ({ ...prev, operations: num }))}
+                  disabled={tokyoWriteLoading}
                 >
                   {num}회
                 </button>
@@ -411,44 +527,99 @@ export default function StressTest() {
           </div>
 
           <button
-            className="run-test-btn global"
-            onClick={runGlobalRpoTest}
-            disabled={globalRpoLoading}
+            className="run-test-btn tokyo"
+            onClick={runTokyoWriteTest}
+            disabled={tokyoWriteLoading}
           >
-            {globalRpoLoading ? 'Global RPO 측정 중...' : 'Global RPO 테스트 실행'}
+            {tokyoWriteLoading ? 'Tokyo Write 실행 중...' : 'Tokyo Write 테스트 실행'}
           </button>
 
-          {globalRpoResult && (
+          {tokyoWriteResult && (
+            <div className="result-inline">
+              <div className="result-grid">
+                <div className="result-item">
+                  <span className="result-label">총 Write</span>
+                  <span className="result-value">{tokyoWriteResult.totalWrites?.toLocaleString()}</span>
+                </div>
+                <div className="result-item">
+                  <span className="result-label">소요 시간</span>
+                  <span className="result-value">{(tokyoWriteResult.elapsedMs / 1000).toFixed(2)}초</span>
+                </div>
+                <div className="result-item">
+                  <span className="result-label">OPS</span>
+                  <span className="result-value highlight">{tokyoWriteResult.opsPerSecond?.toLocaleString()}/s</span>
+                </div>
+                <div className="result-item">
+                  <span className="result-label">위치</span>
+                  <span className="result-value">{tokyoWriteResult.location?.region}</span>
+                </div>
+              </div>
+              <p className="test-id">Test ID: {tokyoWriteResult.testId}</p>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Cross-Region Test (Seoul Write → Tokyo Read) */}
+      <section className="section">
+        <div className="load-test-card cross-region">
+          <h3>Cross-Region 복제 테스트</h3>
+          <p className="card-desc">Seoul Write → Tokyo Read 크로스 리전 복제 지연 측정</p>
+
+          <div className="config-group">
+            <label>측정 횟수</label>
+            <div className="button-group">
+              {crossRegionIterOptions.map(num => (
+                <button
+                  key={num}
+                  className={crossRegionConfig.iterations === num ? 'active' : ''}
+                  onClick={() => setCrossRegionConfig(prev => ({ ...prev, iterations: num }))}
+                  disabled={crossRegionLoading}
+                >
+                  {num}회
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            className="run-test-btn cross-region"
+            onClick={runCrossRegionTest}
+            disabled={crossRegionLoading}
+          >
+            {crossRegionLoading ? 'Cross-Region 측정 중...' : 'Cross-Region 테스트 실행'}
+          </button>
+
+          {crossRegionResult && (
             <div className="result-inline">
               <div className="result-grid">
                 <div className="result-item">
                   <span className="result-label">성공</span>
-                  <span className="result-value">{globalRpoResult.successful}/{globalRpoResult.iterations}</span>
+                  <span className="result-value">{crossRegionResult.successful}/{crossRegionResult.iterations}</span>
                 </div>
                 <div className="result-item">
                   <span className="result-label">평균 지연</span>
-                  <span className="result-value highlight">{globalRpoResult.avgLagMs}ms</span>
+                  <span className="result-value highlight">{crossRegionResult.avgLagMs}ms</span>
                 </div>
                 <div className="result-item">
                   <span className="result-label">최소</span>
-                  <span className="result-value">{globalRpoResult.minLagMs}ms</span>
+                  <span className="result-value">{crossRegionResult.minLagMs}ms</span>
                 </div>
                 <div className="result-item">
                   <span className="result-label">최대</span>
-                  <span className="result-value">{globalRpoResult.maxLagMs}ms</span>
+                  <span className="result-value">{crossRegionResult.maxLagMs}ms</span>
                 </div>
                 <div className="result-item">
                   <span className="result-label">중앙값</span>
-                  <span className="result-value">{globalRpoResult.medianLagMs}ms</span>
+                  <span className="result-value">{crossRegionResult.medianLagMs}ms</span>
                 </div>
                 <div className="result-item">
                   <span className="result-label">P95</span>
-                  <span className="result-value">{globalRpoResult.p95LagMs}ms</span>
+                  <span className="result-value">{crossRegionResult.p95LagMs}ms</span>
                 </div>
               </div>
               <div className="host-info">
-                <p>Seoul Writer: {globalRpoResult.seoulWriterHost}</p>
-                <p>Tokyo Reader: {globalRpoResult.tokyoReaderHost}</p>
+                <p>Seoul Write → Tokyo Read (Cross-Region Replication)</p>
               </div>
             </div>
           )}
@@ -479,13 +650,18 @@ export default function StressTest() {
               </tr>
               <tr>
                 <td>RPO Test</td>
-                <td>로컬 복제 지연 측정</td>
+                <td>복제 지연 측정 (리전별)</td>
                 <td>Writer→Reader 복제 지연 확인 (목표: &lt;100ms)</td>
               </tr>
               <tr>
-                <td>Global RPO</td>
-                <td>크로스 리전 복제 측정</td>
-                <td>Seoul→Tokyo 복제 지연 확인 (목표: &lt;1초)</td>
+                <td>Tokyo Write</td>
+                <td>Write Forwarding 테스트</td>
+                <td>Tokyo→Seoul 쓰기 전달 동작 확인</td>
+              </tr>
+              <tr>
+                <td>Cross-Region</td>
+                <td>크로스 리전 복제 지연</td>
+                <td>Seoul Write→Tokyo Read 지연 측정 (목표: &lt;1초)</td>
               </tr>
             </tbody>
           </table>
