@@ -31,8 +31,8 @@ export default function LoadTest() {
 
   
   const albUrls = {
-    seoul: 'http://healthcheck-api-seoul-alb-164208498.ap-northeast-2.elb.amazonaws.com',
-    tokyo: 'http://healthcheck-api-tokyo-alb-376833905.ap-northeast-1.elb.amazonaws.com',
+    seoul: 'https://seoul.tier1.ddos.io.kr',
+    tokyo: 'https://tokyo.tier1.ddos.io.kr',
   }
 
   const targetOptions = [
