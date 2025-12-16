@@ -22,6 +22,11 @@ export default function StressTest() {
   const [tokyoWriteLoading, setTokyoWriteLoading] = useState(false)
   const [tokyoWriteResult, setTokyoWriteResult] = useState(null)
 
+  // Cross-Region Test State (Seoul Write → Tokyo Read)
+  const [crossRegionConfig, setCrossRegionConfig] = useState({ iterations: 5 })
+  const [crossRegionLoading, setCrossRegionLoading] = useState(false)
+  const [crossRegionResult, setCrossRegionResult] = useState(null)
+
   const [error, setError] = useState(null)
 
   // CPU Stress Test
@@ -128,6 +133,91 @@ export default function StressTest() {
     }
   }
 
+  // Cross-Region Test (Seoul Write → Tokyo Read)
+  const runCrossRegionTest = async () => {
+    setCrossRegionLoading(true)
+    setCrossRegionResult(null)
+    setError(null)
+
+    const results = []
+    const errors = []
+
+    try {
+      for (let i = 0; i < crossRegionConfig.iterations; i++) {
+        const markerId = `cross-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        const writeStart = Date.now()
+
+        // 1. Seoul에 Write
+        const writeRes = await fetch(`${getSeoulApiUrl()}/db-stress`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ operations: 1, concurrency: 1, type: 'write' }),
+        })
+        const writeData = await writeRes.json()
+
+        if (writeData.status !== 'ok') {
+          errors.push(`Write failed: ${writeData.error}`)
+          continue
+        }
+
+        // 2. Tokyo에서 Read 시도 (최대 10초)
+        const maxWait = 10000
+        const pollInterval = 50
+        let found = false
+
+        while (Date.now() - writeStart < maxWait) {
+          try {
+            const readRes = await fetch(`${getTokyoApiUrl()}/health`, { method: 'GET' })
+            const readData = await readRes.json()
+
+            if (readData.status === 'ok' && readData.db?.status === 'ok') {
+              const lag = Date.now() - writeStart
+              results.push(lag)
+              found = true
+              break
+            }
+          } catch (e) {
+            // continue polling
+          }
+          await new Promise(r => setTimeout(r, pollInterval))
+        }
+
+        if (!found) {
+          errors.push(`Iteration ${i + 1}: Timeout`)
+        }
+
+        // 측정 간 간격
+        if (i < crossRegionConfig.iterations - 1) {
+          await new Promise(r => setTimeout(r, 200))
+        }
+      }
+
+      if (results.length === 0) {
+        setError('모든 Cross-Region 측정 실패')
+        return
+      }
+
+      const sorted = [...results].sort((a, b) => a - b)
+      setCrossRegionResult({
+        status: 'ok',
+        iterations: crossRegionConfig.iterations,
+        successful: results.length,
+        failed: errors.length,
+        avgLagMs: Math.round(results.reduce((a, b) => a + b, 0) / results.length),
+        minLagMs: sorted[0],
+        maxLagMs: sorted[sorted.length - 1],
+        medianLagMs: sorted[Math.floor(sorted.length / 2)],
+        p95LagMs: sorted[Math.floor(sorted.length * 0.95)] || sorted[sorted.length - 1],
+        allLagsMs: results,
+        errors: errors.length > 0 ? errors : undefined,
+      })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setCrossRegionLoading(false)
+    }
+  }
+
   const secondsOptions = [10, 30, 60, 120]
   const intensityOptions = [
     { value: null, label: '전체 코어' },
@@ -148,6 +238,7 @@ export default function StressTest() {
     { value: 'tokyo', label: 'Tokyo' },
   ]
   const tokyoWriteOpsOptions = [10, 50, 100]
+  const crossRegionIterOptions = [3, 5, 10]
 
   return (
     <div className="page-content">
@@ -469,6 +560,72 @@ export default function StressTest() {
         </div>
       </section>
 
+      {/* Cross-Region Test (Seoul Write → Tokyo Read) */}
+      <section className="section">
+        <div className="load-test-card cross-region">
+          <h3>Cross-Region 복제 테스트</h3>
+          <p className="card-desc">Seoul Write → Tokyo Read 크로스 리전 복제 지연 측정</p>
+
+          <div className="config-group">
+            <label>측정 횟수</label>
+            <div className="button-group">
+              {crossRegionIterOptions.map(num => (
+                <button
+                  key={num}
+                  className={crossRegionConfig.iterations === num ? 'active' : ''}
+                  onClick={() => setCrossRegionConfig(prev => ({ ...prev, iterations: num }))}
+                  disabled={crossRegionLoading}
+                >
+                  {num}회
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            className="run-test-btn cross-region"
+            onClick={runCrossRegionTest}
+            disabled={crossRegionLoading}
+          >
+            {crossRegionLoading ? 'Cross-Region 측정 중...' : 'Cross-Region 테스트 실행'}
+          </button>
+
+          {crossRegionResult && (
+            <div className="result-inline">
+              <div className="result-grid">
+                <div className="result-item">
+                  <span className="result-label">성공</span>
+                  <span className="result-value">{crossRegionResult.successful}/{crossRegionResult.iterations}</span>
+                </div>
+                <div className="result-item">
+                  <span className="result-label">평균 지연</span>
+                  <span className="result-value highlight">{crossRegionResult.avgLagMs}ms</span>
+                </div>
+                <div className="result-item">
+                  <span className="result-label">최소</span>
+                  <span className="result-value">{crossRegionResult.minLagMs}ms</span>
+                </div>
+                <div className="result-item">
+                  <span className="result-label">최대</span>
+                  <span className="result-value">{crossRegionResult.maxLagMs}ms</span>
+                </div>
+                <div className="result-item">
+                  <span className="result-label">중앙값</span>
+                  <span className="result-value">{crossRegionResult.medianLagMs}ms</span>
+                </div>
+                <div className="result-item">
+                  <span className="result-label">P95</span>
+                  <span className="result-value">{crossRegionResult.p95LagMs}ms</span>
+                </div>
+              </div>
+              <div className="host-info">
+                <p>Seoul Write → Tokyo Read (Cross-Region Replication)</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
       <section className="section">
         <div className="info-card">
           <h3>스트레스 테스트 가이드</h3>
@@ -500,6 +657,11 @@ export default function StressTest() {
                 <td>Tokyo Write</td>
                 <td>Write Forwarding 테스트</td>
                 <td>Tokyo→Seoul 쓰기 전달 동작 확인</td>
+              </tr>
+              <tr>
+                <td>Cross-Region</td>
+                <td>크로스 리전 복제 지연</td>
+                <td>Seoul Write→Tokyo Read 지연 측정 (목표: &lt;1초)</td>
               </tr>
             </tbody>
           </table>
