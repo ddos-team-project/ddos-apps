@@ -1842,3 +1842,158 @@ body {
     width: 40%;
   }
 }
+
+/* ========================================
+   Continuous Load Test (연속 부하 테스트)
+   ======================================== */
+
+.continuous-config {
+  background: rgba(102, 126, 234, 0.1);
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px dashed rgba(102, 126, 234, 0.3);
+}
+
+.continuous-config label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  color: #ccd6f6;
+}
+
+.continuous-config input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.duration-select {
+  margin-top: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.duration-select span {
+  color: #8892b0;
+  font-size: 0.85rem;
+}
+
+.test-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.run-test-btn.continuous {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+.run-test-btn.continuous:hover {
+  box-shadow: 0 4px 20px rgba(240, 147, 251, 0.4);
+}
+
+.run-test-btn.stop {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
+}
+
+.run-test-btn.stop:hover {
+  box-shadow: 0 4px 20px rgba(255, 107, 107, 0.4);
+}
+
+/* Progress Card */
+.continuous-progress-card {
+  background: rgba(240, 147, 251, 0.1);
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 2px solid rgba(240, 147, 251, 0.3);
+}
+
+.continuous-progress-card h3 {
+  font-size: 1.1rem;
+  color: #f093fb;
+  margin-bottom: 1rem;
+}
+
+.progress-bar-container {
+  height: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #f093fb 0%, #f5576c 100%);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.progress-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.progress-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.progress-stat .stat-label {
+  font-size: 0.8rem;
+  color: #8892b0;
+}
+
+.progress-stat .stat-value {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #ccd6f6;
+}
+
+.progress-stat .stat-value.success {
+  color: #64ffda;
+}
+
+.progress-stat .stat-value.error {
+  color: #ff6b6b;
+}
+
+.progress-hint {
+  font-size: 0.85rem;
+  color: #8892b0;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+}
+
+.info-hint {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  color: #8892b0;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+}
+
+@media (max-width: 768px) {
+  .continuous-progress-card {
+    padding: 1rem;
+  }
+
+  .progress-stats {
+    gap: 1rem;
+  }
+
+  .progress-stat .stat-value {
+    font-size: 1rem;
+  }
+
+  .duration-select {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
