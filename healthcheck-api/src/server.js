@@ -388,9 +388,9 @@ app.get('/idc-health', async (req, res) => {
   }
 });
 
-// 부하 테스트 엔드포인트
-const SEOUL_ALB_URL = process.env.SEOUL_ALB_URL || 'https://tier1.ddos.io.kr';
-const TOKYO_ALB_URL = process.env.TOKYO_ALB_URL || 'https://tier1.ddos.io.kr';
+// 부하 테스트 엔드포인트 (각 리전 ALB 직접 지정)
+const SEOUL_ALB_URL = process.env.SEOUL_ALB_URL || 'http://healthcheck-api-seoul-alb-164208498.ap-northeast-2.elb.amazonaws.com';
+const TOKYO_ALB_URL = process.env.TOKYO_ALB_URL || 'http://healthcheck-api-tokyo-alb-376833905.ap-northeast-1.elb.amazonaws.com';
 
 app.post('/load-test', async (req, res) => {
   if (!ALLOW_STRESS) {
