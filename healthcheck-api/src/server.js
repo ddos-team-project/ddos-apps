@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { exec } = require('child_process');
 const { promisify } = require('util');
+const crypto = require('crypto');
 const { getLocation } = require('./instanceLocation');
 const { checkDbHealth, getWriterPool, getReaderPool, getTokyoReaderPool } = require('./dbHealth');
 const { runCpuStress } = require('./cpuStress');
@@ -47,6 +48,27 @@ app.get('/ping', async (req, res) => {
     status: 'ok',
     service: SERVICE_NAME,
     env: APP_ENV,
+    location,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+
+// 실제 CPU 부하 테스트 (요청당 해시 계산)
+app.get('/work', async (req, res) => {
+  const iterations = Number(req.query.iterations) || 50000;
+  const location = await getLocation();
+  
+  // 해시 계산 반복 (실제 CPU 사용)
+  let hash = 'workload-test';
+  for (let i = 0; i < iterations; i++) {
+    hash = crypto.createHash('sha256').update(hash).digest('hex');
+  }
+  
+  res.json({
+    status: 'ok',
+    iterations,
+    hash: hash.substring(0, 8),
     location,
     timestamp: new Date().toISOString(),
   });
@@ -407,8 +429,8 @@ app.post('/load-test', async (req, res) => {
     return res.status(400).json({ status: 'error', error: 'target은 seoul 또는 tokyo여야 합니다.' });
   }
 
-  if (!['light', 'heavy'].includes(mode)) {
-    return res.status(400).json({ status: 'error', error: 'mode는 light 또는 heavy여야 합니다.' });
+  if (!['light', 'heavy', 'realistic'].includes(mode)) {
+    return res.status(400).json({ status: 'error', error: 'mode는 light, heavy, realistic 중 하나여야 합니다.' });
   }
 
   if (requests < 100 || requests > 50000) {
@@ -423,7 +445,7 @@ app.post('/load-test', async (req, res) => {
   const location = await getLocation();
 
   // mode에 따라 엔드포인트 결정
-  const endpoint = mode === 'heavy' ? '/stress?seconds=5' : '/ping';
+  const endpoint = mode === 'heavy' ? '/stress?seconds=5' : mode === 'realistic' ? '/work' : '/ping';
 
   try {
     // ab 명령어 실행

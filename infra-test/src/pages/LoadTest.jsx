@@ -42,7 +42,8 @@ export default function LoadTest() {
 
   const modeOptions = [
     { value: 'light', label: 'Light (/ping)', desc: '네트워크/ALB 테스트' },
-    { value: 'heavy', label: 'Heavy (/stress)', desc: '오토스케일 테스트' },
+    { value: 'realistic', label: 'Realistic (/work)', desc: '실제 부하 시뮬레이션' },
+    { value: 'heavy', label: 'Heavy (/stress)', desc: 'CPU 강제 100%' },
   ]
   const requestOptions = [100, 500, 1000]
   const concurrencyOptions = [10, 30, 50]
