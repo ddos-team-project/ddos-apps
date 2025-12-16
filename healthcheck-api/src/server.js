@@ -6,7 +6,7 @@ const { getLocation } = require('./instanceLocation');
 const { checkDbHealth, getWriterPool, getReaderPool, getTokyoReaderPool } = require('./dbHealth');
 const { runCpuStress } = require('./cpuStress');
 const { runDbStress, cleanupTestData } = require('./dbStress');
-const { runRpoTest, runGlobalRpoTest } = require('./rpoTest');
+const { runRpoTest, runGlobalRpoTest, writeMarker, readMarker, deleteMarker } = require('./rpoTest');
 
 const execAsync = promisify(exec);
 const app = express();
@@ -263,6 +263,86 @@ app.post('/global-rpo-test', async (req, res) => {
       status: 'error',
       error: error.message,
       sourceLocation: location,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// Cross-Region 마커 API (클라이언트에서 Seoul Write → Tokyo Read 테스트용)
+app.post('/write-marker', async (req, res) => {
+  if (!ALLOW_STRESS) {
+    return res.status(403).json({ status: 'forbidden', message: 'write-marker endpoint disabled' });
+  }
+
+  const location = await getLocation();
+
+  try {
+    const result = await writeMarker();
+    res.json({
+      status: 'ok',
+      ...result,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      error: error.message,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+app.get('/read-marker', async (req, res) => {
+  const { id } = req.query;
+
+  if (!id) {
+    return res.status(400).json({ status: 'bad_request', message: 'id query parameter required' });
+  }
+
+  const location = await getLocation();
+
+  try {
+    const result = await readMarker(id);
+    res.json({
+      status: 'ok',
+      ...result,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      error: error.message,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+app.delete('/delete-marker', async (req, res) => {
+  const { id } = req.query;
+
+  if (!id) {
+    return res.status(400).json({ status: 'bad_request', message: 'id query parameter required' });
+  }
+
+  const location = await getLocation();
+
+  try {
+    const result = await deleteMarker(id);
+    res.json({
+      status: 'ok',
+      ...result,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      error: error.message,
+      location,
       timestamp: new Date().toISOString(),
     });
   }

@@ -257,4 +257,72 @@ async function runGlobalRpoTest(iterations = 5) {
   };
 }
 
-module.exports = { runRpoTest, runGlobalRpoTest };
+/**
+ * 마커 쓰기 (Cross-Region 테스트용)
+ * @returns {Promise<{markerId: string, writeTimestamp: number}>}
+ */
+async function writeMarker() {
+  const writerPool = getWriterPool();
+  await ensureTable(writerPool);
+
+  const markerId = `cross-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const writeTimestamp = Date.now();
+
+  const conn = await writerPool.getConnection();
+  try {
+    await conn.query(
+      `INSERT INTO ${TABLE_NAME} (marker_id, write_timestamp) VALUES (?, ?)`,
+      [markerId, writeTimestamp]
+    );
+  } finally {
+    conn.release();
+  }
+
+  return { markerId, writeTimestamp };
+}
+
+/**
+ * 마커 읽기 (Cross-Region 테스트용)
+ * @param {string} markerId
+ * @returns {Promise<{found: boolean, writeTimestamp?: number}>}
+ */
+async function readMarker(markerId) {
+  const readerPool = getReaderPool();
+
+  const conn = await readerPool.getConnection();
+  try {
+    const [rows] = await conn.query(
+      `SELECT write_timestamp FROM ${TABLE_NAME} WHERE marker_id = ?`,
+      [markerId]
+    );
+
+    if (rows.length > 0) {
+      return { found: true, writeTimestamp: rows[0].write_timestamp };
+    }
+    return { found: false };
+  } finally {
+    conn.release();
+  }
+}
+
+/**
+ * 마커 삭제 (Cross-Region 테스트용)
+ * @param {string} markerId
+ * @returns {Promise<{deleted: boolean}>}
+ */
+async function deleteMarker(markerId) {
+  const writerPool = getWriterPool();
+
+  const conn = await writerPool.getConnection();
+  try {
+    const [result] = await conn.query(
+      `DELETE FROM ${TABLE_NAME} WHERE marker_id = ?`,
+      [markerId]
+    );
+    return { deleted: result.affectedRows > 0 };
+  } finally {
+    conn.release();
+  }
+}
+
+module.exports = { runRpoTest, runGlobalRpoTest, writeMarker, readMarker, deleteMarker };
