@@ -9,7 +9,7 @@ export default function LoadTest() {
   // 설정
   const [region, setRegion] = useState('seoul')
   const [tps, setTps] = useState(22)
-  const [duration, setDuration] = useState(60) // 초 단위
+  const [duration, setDuration] = useState(600) // 초 단위
 
   // 상태
   const [isRunning, setIsRunning] = useState(false)
@@ -35,9 +35,9 @@ export default function LoadTest() {
   ]
 
   const durationOptions = [
-    { value: 60, label: '1분' },
-    { value: 180, label: '3분' },
-    { value: 300, label: '5분' },
+    { value: 600, label: '10분' },
+    { value: 1800, label: '30분' },
+    { value: 3600, label: '1시간' },
   ]
 
   // 테스트 ID 생성
