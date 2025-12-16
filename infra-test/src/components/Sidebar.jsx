@@ -22,8 +22,8 @@ export default function Sidebar() {
         </li>
         <li>
           <NavLink to="/stress-test" className={({ isActive }) => isActive ? 'active' : ''}>
-            <span className="menu-icon">🔥</span>
-            <span className="menu-text">스트레스 테스트</span>
+            <span className="menu-icon">🗄️</span>
+            <span className="menu-text">DB 테스트</span>
           </NavLink>
         </li>
       </ul>
