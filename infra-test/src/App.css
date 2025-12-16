@@ -1554,3 +1554,291 @@ body {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* ========================================
+   Evidence Card (증적 자료)
+   ======================================== */
+
+.evidence-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 2px solid rgba(100, 255, 218, 0.3);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.evidence-card h3 {
+  font-size: 1.2rem;
+  color: #64ffda;
+  margin-bottom: 0.25rem;
+}
+
+.evidence-subtitle {
+  color: #8892b0;
+  font-size: 0.85rem;
+  margin-bottom: 1.5rem;
+}
+
+.evidence-section {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.evidence-section:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.evidence-section h4 {
+  font-size: 0.95rem;
+  color: #ccd6f6;
+  margin-bottom: 1rem;
+  padding-left: 0.5rem;
+  border-left: 3px solid #64ffda;
+}
+
+.evidence-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.evidence-table th,
+.evidence-table td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+}
+
+.evidence-table th {
+  background: rgba(0, 0, 0, 0.2);
+  color: #8892b0;
+  font-weight: 500;
+  width: 40%;
+  font-size: 0.85rem;
+}
+
+.evidence-table td {
+  color: #ccd6f6;
+  font-size: 0.9rem;
+}
+
+.evidence-table td.timestamp {
+  font-family: Monaco, Menlo, monospace;
+  font-size: 0.85rem;
+  color: #64ffda;
+}
+
+.evidence-table td.success {
+  color: #64ffda;
+  font-weight: 600;
+}
+
+.evidence-table td.error {
+  color: #ff6b6b;
+  font-weight: 600;
+}
+
+.evidence-table td.highlight {
+  color: #64ffda;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.evidence-table tr:not(:last-child) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.instance-input-group {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.instance-input {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.instance-input label {
+  font-size: 0.8rem;
+  color: #8892b0;
+}
+
+.instance-input input {
+  width: 100px;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  color: #ccd6f6;
+  font-size: 1rem;
+  text-align: center;
+}
+
+.instance-input input:focus {
+  outline: none;
+  border-color: #64ffda;
+}
+
+.instance-input input::placeholder {
+  color: #8892b0;
+  font-size: 0.8rem;
+}
+
+.instance-input-group .arrow {
+  font-size: 1.5rem;
+  color: #64ffda;
+  margin-top: 1.5rem;
+}
+
+.instance-change {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin-top: 1.5rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+}
+
+.instance-change.increase {
+  color: #64ffda;
+  background: rgba(100, 255, 218, 0.1);
+}
+
+.instance-change.decrease {
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.1);
+}
+
+@media (max-width: 768px) {
+  .evidence-card {
+    padding: 1rem;
+  }
+
+  .evidence-table th,
+  .evidence-table td {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+  }
+
+  .evidence-table th {
+    width: 45%;
+  }
+
+  .instance-input-group {
+    justify-content: center;
+  }
+}
+
+/* ========================================
+   VPN Evidence Card (VPN 연결 증적)
+   ======================================== */
+
+.vpn-evidence-card {
+  background: rgba(240, 147, 251, 0.05);
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 2px solid rgba(240, 147, 251, 0.3);
+  margin-top: 1rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.vpn-evidence-card h4 {
+  font-size: 1.1rem;
+  color: #f093fb;
+  margin-bottom: 0.25rem;
+}
+
+.vpn-evidence-card h5 {
+  font-size: 0.9rem;
+  color: #ccd6f6;
+  margin-bottom: 0.75rem;
+  padding-left: 0.5rem;
+  border-left: 3px solid #f093fb;
+}
+
+.vpn-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.connection-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.connection-status.success {
+  color: #64ffda;
+}
+
+.connection-status.fail {
+  color: #ff6b6b;
+}
+
+.encryption-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+}
+
+.encryption-status.active {
+  color: #64ffda;
+}
+
+.encryption-status.inactive {
+  color: #ff6b6b;
+}
+
+.instance-id-small {
+  font-family: Monaco, Menlo, monospace;
+  font-size: 0.75rem;
+  color: #8892b0;
+}
+
+.vpn-evidence-card .evidence-table {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.vpn-evidence-card .evidence-table th {
+  background: rgba(0, 0, 0, 0.2);
+  color: #8892b0;
+  width: 35%;
+}
+
+.vpn-evidence-card .evidence-table td {
+  color: #ccd6f6;
+}
+
+.vpn-evidence-card .evidence-table td.highlight {
+  color: #f093fb;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+@media (max-width: 768px) {
+  .vpn-evidence-card {
+    padding: 1rem;
+  }
+
+  .vpn-evidence-card h4 {
+    font-size: 1rem;
+  }
+
+  .vpn-evidence-card .evidence-table th {
+    width: 40%;
+  }
+}

@@ -11,6 +11,8 @@ export default function LoadTest() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
+  const [testMeta, setTestMeta] = useState({ startTime: null, endTime: null })
+  const [instanceCount, setInstanceCount] = useState({ before: '', after: '' })
 
   const targetOptions = [
     { value: 'seoul', label: '서울 (ap-northeast-2)' },
@@ -24,10 +26,47 @@ export default function LoadTest() {
   const requestOptions = [1000, 5000, 10000]
   const concurrencyOptions = [10, 50, 100]
 
+  const formatTimestamp = (date) => {
+    if (!date) return '-'
+    return date.toLocaleString('ko-KR', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    })
+  }
+
+  const calculateDuration = () => {
+    if (!testMeta.startTime || !testMeta.endTime) return '-'
+    const diff = (testMeta.endTime - testMeta.startTime) / 1000
+    return `${diff.toFixed(1)}초`
+  }
+
+  const getSuccessRate = () => {
+    if (!result) return '-'
+    const total = result.totalRequests || 0
+    const failed = result.failedRequests || 0
+    if (total === 0) return '-'
+    return ((total - failed) / total * 100).toFixed(1) + '%'
+  }
+
+  const getInstanceChange = () => {
+    const before = instanceCount.before
+    const after = instanceCount.after
+    if (!before || !after) return null
+    const diff = parseInt(after) - parseInt(before)
+    if (diff > 0) return `+${diff}`
+    return diff.toString()
+  }
+
   const runLoadTest = async () => {
     setLoading(true)
     setResult(null)
     setError(null)
+    setTestMeta({ startTime: new Date(), endTime: null })
 
     try {
       const response = await fetch(`${getApiUrl()}/load-test`, {
@@ -42,11 +81,14 @@ export default function LoadTest() {
 
       if (data.status === 'ok') {
         setResult(data)
+        setTestMeta(prev => ({ ...prev, endTime: new Date() }))
       } else {
         setError(data.error || '부하 테스트 실패')
+        setTestMeta(prev => ({ ...prev, endTime: new Date() }))
       }
     } catch (err) {
       setError(err.message)
+      setTestMeta(prev => ({ ...prev, endTime: new Date() }))
     } finally {
       setLoading(false)
     }
@@ -204,6 +246,123 @@ export default function LoadTest() {
                 <pre>{result.raw}</pre>
               </details>
             )}
+          </div>
+        </section>
+      )}
+
+      {result && (
+        <section className="section">
+          <div className="evidence-card">
+            <h3>증적 자료</h3>
+            <p className="evidence-subtitle">부하 테스트 결과 요약 (캡처용)</p>
+
+            <div className="evidence-section">
+              <h4>테스트 정보</h4>
+              <table className="evidence-table">
+                <tbody>
+                  <tr>
+                    <th>테스트 대상</th>
+                    <td>{config.target === 'seoul' ? '서울 (ap-northeast-2)' : '도쿄 (ap-northeast-1)'}</td>
+                  </tr>
+                  <tr>
+                    <th>테스트 모드</th>
+                    <td>{config.mode === 'light' ? 'Light (/ping)' : 'Heavy (/stress)'}</td>
+                  </tr>
+                  <tr>
+                    <th>시작 시간</th>
+                    <td className="timestamp">{formatTimestamp(testMeta.startTime)}</td>
+                  </tr>
+                  <tr>
+                    <th>종료 시간</th>
+                    <td className="timestamp">{formatTimestamp(testMeta.endTime)}</td>
+                  </tr>
+                  <tr>
+                    <th>총 소요 시간</th>
+                    <td>{calculateDuration()}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="evidence-section">
+              <h4>요청 결과</h4>
+              <table className="evidence-table">
+                <tbody>
+                  <tr>
+                    <th>총 요청 수</th>
+                    <td>{result.totalRequests?.toLocaleString()}</td>
+                  </tr>
+                  <tr>
+                    <th>성공</th>
+                    <td className="success">{result.completedRequests?.toLocaleString()}</td>
+                  </tr>
+                  <tr>
+                    <th>실패</th>
+                    <td className="error">{result.failedRequests?.toLocaleString()}</td>
+                  </tr>
+                  <tr>
+                    <th>성공률</th>
+                    <td>{getSuccessRate()}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="evidence-section">
+              <h4>성능 지표</h4>
+              <table className="evidence-table">
+                <tbody>
+                  <tr>
+                    <th>TPS (초당 처리량)</th>
+                    <td className="highlight">{result.requestsPerSecond?.toFixed(2)} req/sec</td>
+                  </tr>
+                  <tr>
+                    <th>평균 응답 시간</th>
+                    <td>{result.avgResponseTime?.toFixed(2)} ms</td>
+                  </tr>
+                  <tr>
+                    <th>최소 응답 시간</th>
+                    <td>{result.minResponseTime?.toFixed(2)} ms</td>
+                  </tr>
+                  <tr>
+                    <th>최대 응답 시간</th>
+                    <td>{result.maxResponseTime?.toFixed(2)} ms</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="evidence-section">
+              <h4>인스턴스 수 변화 (수동 입력)</h4>
+              <div className="instance-input-group">
+                <div className="instance-input">
+                  <label>테스트 전</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={instanceCount.before}
+                    onChange={(e) => setInstanceCount(prev => ({ ...prev, before: e.target.value }))}
+                    placeholder="예: 2"
+                  />
+                </div>
+                <span className="arrow">→</span>
+                <div className="instance-input">
+                  <label>테스트 후</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={instanceCount.after}
+                    onChange={(e) => setInstanceCount(prev => ({ ...prev, after: e.target.value }))}
+                    placeholder="예: 4"
+                  />
+                </div>
+                {getInstanceChange() && (
+                  <span className={`instance-change ${parseInt(getInstanceChange()) > 0 ? 'increase' : 'decrease'}`}>
+                    ({getInstanceChange()})
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         </section>
       )}
