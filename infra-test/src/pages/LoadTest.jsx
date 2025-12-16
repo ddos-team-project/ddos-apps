@@ -4,8 +4,8 @@ import { getApiUrl } from '../components/api'
 export default function LoadTest() {
   const [config, setConfig] = useState({
     target: 'seoul',
-    requests: 1000,
-    concurrency: 50,
+    requests: 500,
+    concurrency: 30,
     mode: 'light',
   })
   const [loading, setLoading] = useState(false)
@@ -38,8 +38,8 @@ export default function LoadTest() {
     { value: 'light', label: 'Light (/ping)', desc: '네트워크/ALB 테스트' },
     { value: 'heavy', label: 'Heavy (/stress)', desc: '오토스케일 테스트' },
   ]
-  const requestOptions = [1000, 5000, 10000]
-  const concurrencyOptions = [10, 50, 100]
+  const requestOptions = [100, 500, 1000]
+  const concurrencyOptions = [10, 30, 50]
   const durationOptions = [3, 5, 10, 15] // 분 단위
 
   const formatTimestamp = (date) => {
@@ -167,7 +167,7 @@ export default function LoadTest() {
 
       // 다음 라운드 전 짧은 대기 (서버 부하 분산)
       if (!abortRef.current && (Date.now() - startTime.getTime()) < durationMs) {
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        await new Promise(resolve => setTimeout(resolve, 3000))
       }
     }
 
