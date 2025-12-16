@@ -17,6 +17,11 @@ export default function StressTest() {
   const [rpoLoading, setRpoLoading] = useState(false)
   const [rpoResult, setRpoResult] = useState(null)
 
+  // Global RPO Test State (Seoul → Tokyo)
+  const [globalRpoConfig, setGlobalRpoConfig] = useState({ iterations: 5 })
+  const [globalRpoLoading, setGlobalRpoLoading] = useState(false)
+  const [globalRpoResult, setGlobalRpoResult] = useState(null)
+
   const [error, setError] = useState(null)
 
   // CPU Stress Test
@@ -96,6 +101,32 @@ export default function StressTest() {
     }
   }
 
+  // Global RPO Test (Seoul → Tokyo)
+  const runGlobalRpoTest = async () => {
+    setGlobalRpoLoading(true)
+    setGlobalRpoResult(null)
+    setError(null)
+
+    try {
+      const response = await fetch(`${getApiUrl()}/global-rpo-test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(globalRpoConfig),
+      })
+      const data = await response.json()
+
+      if (data.status === 'ok') {
+        setGlobalRpoResult(data)
+      } else {
+        setError(data.message || data.error || 'Global RPO 테스트 실패')
+      }
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setGlobalRpoLoading(false)
+    }
+  }
+
   const secondsOptions = [10, 30, 60, 120]
   const intensityOptions = [
     { value: null, label: '전체 코어' },
@@ -111,6 +142,7 @@ export default function StressTest() {
     { value: 'mixed', label: 'Mixed (7:3)' },
   ]
   const iterationsOptions = [5, 10, 20, 50]
+  const globalIterationsOptions = [3, 5, 10, 20]
 
   return (
     <div className="page-content">
@@ -356,6 +388,73 @@ export default function StressTest() {
         </div>
       </section>
 
+      {/* Global RPO Test (Seoul → Tokyo) */}
+      <section className="section">
+        <div className="load-test-card global-rpo">
+          <h3>Global RPO 테스트 (크로스 리전)</h3>
+          <p className="card-desc">Seoul Primary Writer → Tokyo Secondary Reader 복제 지연 측정</p>
+
+          <div className="config-group">
+            <label>측정 횟수</label>
+            <div className="button-group">
+              {globalIterationsOptions.map(num => (
+                <button
+                  key={num}
+                  className={globalRpoConfig.iterations === num ? 'active' : ''}
+                  onClick={() => setGlobalRpoConfig(prev => ({ ...prev, iterations: num }))}
+                  disabled={globalRpoLoading}
+                >
+                  {num}회
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            className="run-test-btn global"
+            onClick={runGlobalRpoTest}
+            disabled={globalRpoLoading}
+          >
+            {globalRpoLoading ? 'Global RPO 측정 중...' : 'Global RPO 테스트 실행'}
+          </button>
+
+          {globalRpoResult && (
+            <div className="result-inline">
+              <div className="result-grid">
+                <div className="result-item">
+                  <span className="result-label">성공</span>
+                  <span className="result-value">{globalRpoResult.successful}/{globalRpoResult.iterations}</span>
+                </div>
+                <div className="result-item">
+                  <span className="result-label">평균 지연</span>
+                  <span className="result-value highlight">{globalRpoResult.avgLagMs}ms</span>
+                </div>
+                <div className="result-item">
+                  <span className="result-label">최소</span>
+                  <span className="result-value">{globalRpoResult.minLagMs}ms</span>
+                </div>
+                <div className="result-item">
+                  <span className="result-label">최대</span>
+                  <span className="result-value">{globalRpoResult.maxLagMs}ms</span>
+                </div>
+                <div className="result-item">
+                  <span className="result-label">중앙값</span>
+                  <span className="result-value">{globalRpoResult.medianLagMs}ms</span>
+                </div>
+                <div className="result-item">
+                  <span className="result-label">P95</span>
+                  <span className="result-value">{globalRpoResult.p95LagMs}ms</span>
+                </div>
+              </div>
+              <div className="host-info">
+                <p>Seoul Writer: {globalRpoResult.seoulWriterHost}</p>
+                <p>Tokyo Reader: {globalRpoResult.tokyoReaderHost}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
       <section className="section">
         <div className="info-card">
           <h3>스트레스 테스트 가이드</h3>
@@ -380,8 +479,13 @@ export default function StressTest() {
               </tr>
               <tr>
                 <td>RPO Test</td>
-                <td>복제 지연 측정</td>
+                <td>로컬 복제 지연 측정</td>
                 <td>Writer→Reader 복제 지연 확인 (목표: &lt;100ms)</td>
+              </tr>
+              <tr>
+                <td>Global RPO</td>
+                <td>크로스 리전 복제 측정</td>
+                <td>Seoul→Tokyo 복제 지연 확인 (목표: &lt;1초)</td>
               </tr>
             </tbody>
           </table>

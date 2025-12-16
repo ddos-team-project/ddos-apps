@@ -6,7 +6,7 @@ const { getLocation } = require('./instanceLocation');
 const { checkDbHealth } = require('./dbHealth');
 const { runCpuStress } = require('./cpuStress');
 const { runDbStress, cleanupTestData } = require('./dbStress');
-const { runRpoTest } = require('./rpoTest');
+const { runRpoTest, runGlobalRpoTest } = require('./rpoTest');
 
 const execAsync = promisify(exec);
 const app = express();
@@ -186,6 +186,43 @@ app.post('/rpo-test', async (req, res) => {
     });
   }
 });
+
+// Global RPO 테스트 (Seoul → Tokyo 크로스 리전 복제 지연 측정)
+app.post('/global-rpo-test', async (req, res) => {
+  if (!ALLOW_STRESS) {
+    return res.status(403).json({ status: 'forbidden', message: 'global-rpo-test endpoint disabled' });
+  }
+
+  const { iterations = 5 } = req.body;
+
+  if (iterations < 1 || iterations > 50) {
+    return res.status(400).json({ status: 'bad_request', message: 'iterations must be 1-50' });
+  }
+
+  const location = await getLocation();
+
+  try {
+    console.log(`[GLOBAL-RPO-TEST] Starting: ${iterations} iterations (Seoul → Tokyo)`);
+    const result = await runGlobalRpoTest(iterations);
+
+    res.json({
+      ...result,
+      seoulWriterHost: process.env.DB_HOST,
+      tokyoReaderHost: process.env.DB_TOKYO_READER_HOST,
+      sourceLocation: location,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('[GLOBAL-RPO-TEST] Error:', error.message);
+    res.status(500).json({
+      status: 'error',
+      error: error.message,
+      sourceLocation: location,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
 app.get('/idc-health', async (req, res) => {
   const location = await getLocation();
   const start = Date.now();

@@ -16,8 +16,17 @@ const DB_READER_CONFIG = {
   database: process.env.DB_NAME,
 };
 
+const DB_TOKYO_READER_CONFIG = {
+  host: process.env.DB_TOKYO_READER_HOST,
+  port: Number(process.env.DB_PORT || 3306),
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+};
+
 let writerPool;
 let readerPool;
+let tokyoReaderPool;
 
 function getMissingDbConfig() {
   const missing = [];
@@ -39,13 +48,27 @@ function getWriterPool() {
     throw new Error(`missing env: ${missing.join(', ')}`);
   }
 
-  writerPool = mysql.createPool({
+  const pool = mysql.createPool({
     ...DB_WRITER_CONFIG,
     waitForConnections: true,
     connectionLimit: 20,
     queueLimit: 0,
   });
 
+  // Aurora Global Database Write Forwarding 활성화
+  // Secondary 클러스터에서 쓰기 시 Primary로 전달
+  const originalGetConnection = pool.getConnection.bind(pool);
+  pool.getConnection = async function () {
+    const conn = await originalGetConnection();
+    try {
+      await conn.query("SET aurora_replica_read_consistency = 'SESSION'");
+    } catch (e) {
+      // Primary 클러스터에서는 이 변수가 없을 수 있음
+    }
+    return conn;
+  };
+
+  writerPool = pool;
   return writerPool;
 }
 
@@ -66,6 +89,29 @@ function getReaderPool() {
   });
 
   return readerPool;
+}
+
+function getTokyoReaderPool() {
+  if (tokyoReaderPool) return tokyoReaderPool;
+
+  if (!DB_TOKYO_READER_CONFIG.host) {
+    throw new Error('missing env: DB_TOKYO_READER_HOST');
+  }
+
+  const missing = getMissingDbConfig();
+  if (missing.length) {
+    throw new Error(`missing env: ${missing.join(', ')}`);
+  }
+
+  tokyoReaderPool = mysql.createPool({
+    ...DB_TOKYO_READER_CONFIG,
+    waitForConnections: true,
+    connectionLimit: 20,
+    queueLimit: 0,
+    connectTimeout: 10000,
+  });
+
+  return tokyoReaderPool;
 }
 
 // 기존 getPool은 writerPool로 대체 (하위 호환)
@@ -97,4 +143,4 @@ async function checkDbHealth() {
   }
 }
 
-module.exports = { checkDbHealth, getWriterPool, getReaderPool, getPool };
+module.exports = { checkDbHealth, getWriterPool, getReaderPool, getTokyoReaderPool, getPool };
