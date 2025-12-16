@@ -1,4 +1,4 @@
-const { getWriterPool, getReaderPool } = require('./dbHealth');
+const { getWriterPool, getReaderPool, getTokyoReaderPool } = require('./dbHealth');
 
 const TABLE_NAME = 'rpo_test_markers';
 
@@ -138,4 +138,123 @@ async function runRpoTest(iterations = 10) {
   };
 }
 
-module.exports = { runRpoTest };
+/**
+ * 크로스 리전 복제 지연 측정 (Seoul Writer → Tokyo Reader)
+ * @returns {Promise<number>} 복제 지연 시간 (ms)
+ */
+async function measureGlobalReplicationLag() {
+  const writerPool = getWriterPool();
+  const tokyoReaderPool = getTokyoReaderPool();
+
+  const markerId = `global-rpo-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const writeTimestamp = Date.now();
+
+  // Seoul Writer에 데이터 쓰기
+  const writerConn = await writerPool.getConnection();
+  try {
+    await writerConn.query(
+      `INSERT INTO ${TABLE_NAME} (marker_id, write_timestamp) VALUES (?, ?)`,
+      [markerId, writeTimestamp]
+    );
+  } finally {
+    writerConn.release();
+  }
+
+  // Tokyo Reader에서 읽기 시도 (최대 30초 - 크로스리전은 더 오래 걸릴 수 있음)
+  const maxWait = 30000;
+  const pollInterval = 10; // 10ms 간격으로 폴링
+  const startPoll = Date.now();
+
+  while (Date.now() - startPoll < maxWait) {
+    const readerConn = await tokyoReaderPool.getConnection();
+    try {
+      const [rows] = await readerConn.query(
+        `SELECT write_timestamp FROM ${TABLE_NAME} WHERE marker_id = ?`,
+        [markerId]
+      );
+
+      if (rows.length > 0) {
+        const lagMs = Date.now() - writeTimestamp;
+        // 테스트 데이터 정리 (Writer에서)
+        const cleanConn = await writerPool.getConnection();
+        try {
+          await cleanConn.query(`DELETE FROM ${TABLE_NAME} WHERE marker_id = ?`, [markerId]);
+        } finally {
+          cleanConn.release();
+        }
+        return lagMs;
+      }
+    } finally {
+      readerConn.release();
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollInterval));
+  }
+
+  // 타임아웃 - 데이터 정리 후 에러
+  const cleanConn = await writerPool.getConnection();
+  try {
+    await cleanConn.query(`DELETE FROM ${TABLE_NAME} WHERE marker_id = ?`, [markerId]);
+  } finally {
+    cleanConn.release();
+  }
+
+  throw new Error(`Global replication timeout: data not replicated to Tokyo within ${maxWait}ms`);
+}
+
+/**
+ * 크로스 리전 RPO 테스트 실행 (Seoul → Tokyo)
+ * @param {number} iterations - 측정 횟수
+ * @returns {Promise<object>} 측정 결과
+ */
+async function runGlobalRpoTest(iterations = 5) {
+  const writerPool = getWriterPool();
+  await ensureTable(writerPool);
+
+  const results = [];
+  const errors = [];
+
+  for (let i = 0; i < iterations; i++) {
+    try {
+      const lag = await measureGlobalReplicationLag();
+      results.push(lag);
+      console.log(`[GLOBAL-RPO] Iteration ${i + 1}/${iterations}: ${lag}ms`);
+    } catch (err) {
+      errors.push(err.message);
+      console.error(`[GLOBAL-RPO] Iteration ${i + 1}/${iterations} failed: ${err.message}`);
+    }
+
+    // 각 측정 사이 간격 (크로스리전은 좀 더 여유있게)
+    if (i < iterations - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+
+  if (results.length === 0) {
+    return {
+      status: 'error',
+      message: 'All global replication measurements failed',
+      errors,
+    };
+  }
+
+  const sorted = [...results].sort((a, b) => a - b);
+
+  return {
+    status: 'ok',
+    type: 'global',
+    route: 'Seoul Writer → Tokyo Reader',
+    iterations,
+    successful: results.length,
+    failed: errors.length,
+    avgLagMs: Math.round(results.reduce((a, b) => a + b, 0) / results.length),
+    minLagMs: sorted[0],
+    maxLagMs: sorted[sorted.length - 1],
+    medianLagMs: sorted[Math.floor(sorted.length / 2)],
+    p95LagMs: sorted[Math.floor(sorted.length * 0.95)] || sorted[sorted.length - 1],
+    allLagsMs: results,
+    errors: errors.length > 0 ? errors : undefined,
+  };
+}
+
+module.exports = { runRpoTest, runGlobalRpoTest };
