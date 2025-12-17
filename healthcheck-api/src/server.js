@@ -98,11 +98,11 @@ app.post('/transaction', async (req, res) => {
   try {
     location = await getLocation();
 
-    // 강도별 암호화 반복 횟수 설정
+    // 강도별 암호화 반복 횟수 설정 (CPU 부하 충분히 주기 위해 높게 설정)
     const intensityConfig = {
-      light: { iterations: 5000, rounds: 2 },
-      medium: { iterations: 10000, rounds: 3 },
-      heavy: { iterations: 20000, rounds: 5 },
+      light: { iterations: 50000, rounds: 5 },
+      medium: { iterations: 100000, rounds: 10 },
+      heavy: { iterations: 200000, rounds: 15 },
     };
     const config = intensityConfig[intensity] || intensityConfig.medium;
 
