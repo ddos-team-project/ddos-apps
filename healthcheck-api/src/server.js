@@ -97,12 +97,24 @@ const saveTransactionLog = (testId, requestId, status, processingMs, location, e
   fsModule.appendFileSync(logFile, csvLine);
 };
 
+// 강도별 iterations 배율 설정
+// light: 10%, medium: 30%, heavy: 100%
+const INTENSITY_MULTIPLIERS = {
+  light: 0.1,
+  medium: 0.3,
+  heavy: 1.0,
+};
+
 // 금융권 거래 처리 시뮬레이션 (요청 1개당 내부 10~15회 처리)
+// intensity 파라미터: 'light' (10%), 'medium' (30%), 'heavy' (100%)
 app.post('/transaction', async (req, res) => {
   const startTime = Date.now();
-  const { testId, requestId } = req.body;
+  const { testId, requestId, intensity = 'medium' } = req.body;
   let location = { region: 'unknown', az: 'unknown', instanceId: 'unknown' };
   const steps = []; // 각 단계별 처리 시간 기록
+
+  // 강도 배율 적용 (기본값: medium = 30%)
+  const multiplier = INTENSITY_MULTIPLIERS[intensity] || 0.3;
 
   // 내부 처리 헬퍼 함수
   const processStep = async (stepName, iterations = 10000) => {
@@ -514,7 +526,7 @@ app.post('/load-test', async (req, res) => {
   }
 
   const location = await getLocation();
-  const { tps = 22, duration = 60, testId } = req.body;
+  const { tps = 22, duration = 60, testId, intensity = 'medium' } = req.body;
 
   // 총 요청 수 = TPS × duration
   const totalRequests = tps * duration;
@@ -540,7 +552,7 @@ app.post('/load-test', async (req, res) => {
 
   // POST 데이터 파일 생성
   const loadTestId = testId || ('load-' + Date.now());
-  const postData = JSON.stringify({ testId: loadTestId, intensity: 'heavy' });
+  const postData = JSON.stringify({ testId: loadTestId, intensity });
 
   try {
     fsModule.writeFileSync('/tmp/ab-post-data.json', postData);

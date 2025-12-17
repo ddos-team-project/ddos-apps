@@ -6,6 +6,7 @@ export default function LoadTest() {
   // 설정
   const [tps, setTps] = useState(22)
   const [duration, setDuration] = useState(300)
+  const [intensity, setIntensity] = useState('medium')
 
   // 상태
   const [isRunning, setIsRunning] = useState(false)
@@ -28,6 +29,12 @@ export default function LoadTest() {
     { value: 300, label: '5분' },
     { value: 600, label: '10분' },
     { value: 1800, label: '30분', desc: '페일오버' },
+  ]
+
+  const intensityOptions = [
+    { value: 'light', label: '낮음', desc: 'CPU 10%' },
+    { value: 'medium', label: '보통', desc: 'CPU 30%' },
+    { value: 'heavy', label: '높음', desc: 'CPU 100%' },
   ]
 
   const startTest = async () => {
@@ -54,7 +61,7 @@ export default function LoadTest() {
       const response = await fetch(API_URL + '/load-test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tps, duration, testId: newTestId }),
+        body: JSON.stringify({ tps, duration, testId: newTestId, intensity }),
       })
       const data = await response.json()
       setTestResult(data)
@@ -129,6 +136,17 @@ export default function LoadTest() {
               {durationOptions.map(opt => (
                 <button key={opt.value} className={duration === opt.value ? 'active' : ''} onClick={() => setDuration(opt.value)} disabled={isRunning}>
                   {opt.label}{opt.desc && <small>{opt.desc}</small>}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>CPU 강도</label>
+            <div className="button-group">
+              {intensityOptions.map(opt => (
+                <button key={opt.value} className={intensity === opt.value ? 'active' : ''} onClick={() => setIntensity(opt.value)} disabled={isRunning}>
+                  {opt.label}<small>{opt.desc}</small>
                 </button>
               ))}
             </div>
