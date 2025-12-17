@@ -1,235 +1,90 @@
 import React, { useState, useRef, useEffect } from 'react'
 
-const API_URLS = {
-  route53: 'https://{random}.tier1.ddos.io.kr', // DNS 캐싱 무시를 위해 랜덤 서브도메인 사용
-  seoul: 'https://seoul.tier1.ddos.io.kr',
-  tokyo: 'https://tokyo.tier1.ddos.io.kr',
-}
-
-// 랜덤 문자열 생성 (DNS 캐싱 무시용)
-const generateRandomSubdomain = () => {
-  return Math.random().toString(36).substring(2, 10)
-}
-
-// 리전에 따른 URL 반환
-const getApiUrl = (region) => {
-  if (region === 'route53') {
-    return API_URLS.route53.replace('{random}', generateRandomSubdomain())
-  }
-  return API_URLS[region]
-}
+const API_URL = 'https://tier1.ddos.io.kr'
 
 export default function LoadTest() {
   // 설정
-  const [region, setRegion] = useState('route53')
   const [tps, setTps] = useState(22)
-  const [duration, setDuration] = useState(600) // 초 단위
+  const [duration, setDuration] = useState(300)
 
   // 상태
   const [isRunning, setIsRunning] = useState(false)
-  const [stats, setStats] = useState({
-    sent: 0,
-    success: 0,
-    failed: 0,
-    elapsedSeconds: 0,
-  })
-  const [testId, setTestId] = useState(null)
-  const [instanceCount, setInstanceCount] = useState({ before: null, current: null })
+  const [testResult, setTestResult] = useState(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [error, setError] = useState(null)
 
-  // Refs
-  const abortRef = useRef(false)
-  const statsRef = useRef({ sent: 0, success: 0, failed: 0 })
-  const intervalRef = useRef(null)
   const timerRef = useRef(null)
 
   const tpsOptions = [
     { value: 7, label: '7 TPS', desc: '평상시' },
     { value: 22, label: '22 TPS', desc: '저녁 피크' },
-    { value: 62, label: '62 TPS', desc: '급증 피크' },
+    { value: 62, label: '62 TPS', desc: '급증 (3배)' },
   ]
 
   const durationOptions = [
+    { value: 60, label: '1분' },
+    { value: 300, label: '5분' },
     { value: 600, label: '10분' },
-    { value: 1800, label: '30분' },
-    { value: 3600, label: '1시간' },
   ]
 
-  // 테스트 ID 생성
-  const generateTestId = () => {
-    const now = new Date()
-    return `test-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`
-  }
-
-  // 단일 트랜잭션 전송
-  const sendTransaction = async (currentTestId, requestId) => {
-    try {
-      const apiUrl = getApiUrl(region)
-      const response = await fetch(`${apiUrl}/transaction`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ testId: currentTestId, requestId }),
-      })
-      const data = await response.json()
-      return data.status === 'success'
-    } catch (err) {
-      return false
-    }
-  }
-
-  // 테스트 시작
   const startTest = async () => {
-    const currentTestId = generateTestId()
-    setTestId(currentTestId)
     setIsRunning(true)
-    abortRef.current = false
-    statsRef.current = { sent: 0, success: 0, failed: 0 }
-    setStats({ sent: 0, success: 0, failed: 0, elapsedSeconds: 0 })
+    setError(null)
+    setTestResult(null)
+    setElapsedSeconds(0)
 
     const startTime = Date.now()
-    let requestCounter = 0
-
-    // 경과 시간 타이머
     timerRef.current = setInterval(() => {
       const elapsed = Math.floor((Date.now() - startTime) / 1000)
-      setStats(prev => ({ ...prev, elapsedSeconds: elapsed }))
+      setElapsedSeconds(elapsed)
+      if (elapsed >= duration) {
+        clearInterval(timerRef.current)
+        setIsRunning(false)
+      }
     }, 1000)
 
-    // TPS에 맞춰 요청 전송
-    const intervalMs = 1000 / tps
-
-    intervalRef.current = setInterval(async () => {
-      if (abortRef.current) return
-
-      const elapsed = (Date.now() - startTime) / 1000
-      if (elapsed >= duration) {
-        stopTest()
-        return
-      }
-
-      requestCounter++
-      const requestId = `req-${String(requestCounter).padStart(6, '0')}`
-
-      statsRef.current.sent++
-      setStats(prev => ({ ...prev, sent: statsRef.current.sent }))
-
-      const success = await sendTransaction(currentTestId, requestId)
-
-      if (success) {
-        statsRef.current.success++
-      } else {
-        statsRef.current.failed++
-      }
-      setStats(prev => ({
-        ...prev,
-        success: statsRef.current.success,
-        failed: statsRef.current.failed,
-      }))
-    }, intervalMs)
-  }
-
-  // 테스트 중지
-  const stopTest = () => {
-    abortRef.current = true
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = null
-    }
-    if (timerRef.current) {
+    try {
+      const response = await fetch(`${API_URL}/load-test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tps, duration, target: 'alb' }),
+      })
+      const data = await response.json()
+      setTestResult(data)
+    } catch (err) {
+      setError(err.message)
+      setIsRunning(false)
       clearInterval(timerRef.current)
-      timerRef.current = null
-    }
-    setIsRunning(false)
-  }
-
-  // 로그 다운로드
-  const downloadLogs = async (targetRegion) => {
-    if (!testId) return
-    if (targetRegion) {
-      // 특정 리전 로그 다운로드
-      window.open(`${API_URLS[targetRegion]}/test-logs?testId=${testId}&format=csv`, '_blank')
-    } else if (region === 'route53') {
-      // Route53 모드: 양쪽 리전 로그 모두 다운로드
-      window.open(`${API_URLS.seoul}/test-logs?testId=${testId}&format=csv`, '_blank')
-      setTimeout(() => {
-        window.open(`${API_URLS.tokyo}/test-logs?testId=${testId}&format=csv`, '_blank')
-      }, 500)
-    } else {
-      // 단일 리전 로그 다운로드
-      window.open(`${API_URLS[region]}/test-logs?testId=${testId}&format=csv`, '_blank')
     }
   }
 
-  // 컴포넌트 언마운트 시 정리
   useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [])
 
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${String(secs).padStart(2, '0')}`
-  }
-
-  const getSuccessRate = () => {
-    if (stats.sent === 0) return '-'
-    return ((stats.success / stats.sent) * 100).toFixed(1) + '%'
-  }
+  const formatTime = (s) => `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`
+  const totalRequests = tps * duration
 
   return (
     <div className="page-content">
       <header className="page-header">
         <h1>피크 트래픽 테스트</h1>
-        <p className="subtitle">ASG 오토스케일링 검증을 위한 트래픽 시뮬레이션</p>
+        <p className="subtitle">금융권 트래픽 급증 시뮬레이션</p>
       </header>
 
       <section className="section">
         <h2>테스트 설정</h2>
         <div className="card">
-          <div className="form-group">
-            <label>리전</label>
-            <div className="button-group">
-              <button
-                className={region === 'route53' ? 'active' : ''}
-                onClick={() => setRegion('route53')}
-                disabled={isRunning}
-              >
-                Route53 (자동)
-                <small>트래픽 분배</small>
-              </button>
-              <button
-                className={region === 'seoul' ? 'active' : ''}
-                onClick={() => setRegion('seoul')}
-                disabled={isRunning}
-              >
-                서울
-                <small>직접 지정</small>
-              </button>
-              <button
-                className={region === 'tokyo' ? 'active' : ''}
-                onClick={() => setRegion('tokyo')}
-                disabled={isRunning}
-              >
-                도쿄
-                <small>직접 지정</small>
-              </button>
-            </div>
+          <div className="config-hint">
+            <strong>방식:</strong> 서버에서 ab로 ALB에 요청 → 각 요청당 14단계 금융 처리 → CPU 부하 → ASG 스케일 아웃
           </div>
 
           <div className="form-group">
-            <label>TPS (초당 요청 수)</label>
+            <label>TPS (초당 요청)</label>
             <div className="button-group">
               {tpsOptions.map(opt => (
-                <button
-                  key={opt.value}
-                  className={tps === opt.value ? 'active' : ''}
-                  onClick={() => setTps(opt.value)}
-                  disabled={isRunning}
-                >
-                  {opt.label}
-                  <small>{opt.desc}</small>
+                <button key={opt.value} className={tps === opt.value ? 'active' : ''} onClick={() => setTps(opt.value)} disabled={isRunning}>
+                  {opt.label}<small>{opt.desc}</small>
                 </button>
               ))}
             </div>
@@ -239,133 +94,74 @@ export default function LoadTest() {
             <label>테스트 시간</label>
             <div className="button-group">
               {durationOptions.map(opt => (
-                <button
-                  key={opt.value}
-                  className={duration === opt.value ? 'active' : ''}
-                  onClick={() => setDuration(opt.value)}
-                  disabled={isRunning}
-                >
+                <button key={opt.value} className={duration === opt.value ? 'active' : ''} onClick={() => setDuration(opt.value)} disabled={isRunning}>
                   {opt.label}
                 </button>
               ))}
             </div>
           </div>
 
+          <div className="test-summary">
+            <span><strong>총 요청:</strong> {totalRequests.toLocaleString()}건</span>
+            <span><strong>동시연결:</strong> {Math.min(tps, 100)}개</span>
+            <span><strong>내부처리:</strong> {(totalRequests * 14).toLocaleString()}단계</span>
+          </div>
+
           <div className="form-actions">
-            {!isRunning ? (
-              <button className="btn btn-primary btn-large" onClick={startTest}>
-                테스트 시작
-              </button>
-            ) : (
-              <button className="btn btn-danger btn-large" onClick={stopTest}>
-                테스트 중지
-              </button>
-            )}
+            <button className="btn btn-primary btn-large" onClick={startTest} disabled={isRunning}>
+              {isRunning ? '테스트 진행 중...' : '부하 테스트 시작'}
+            </button>
           </div>
         </div>
       </section>
 
-      <section className="section">
-        <h2>실시간 현황</h2>
-        <div className="stats-grid">
-          <div className="stat-card">
-            <div className="stat-label">전송</div>
-            <div className="stat-value">{stats.sent.toLocaleString()}</div>
-          </div>
-          <div className="stat-card success">
-            <div className="stat-label">성공</div>
-            <div className="stat-value">{stats.success.toLocaleString()}</div>
-          </div>
-          <div className="stat-card error">
-            <div className="stat-label">실패</div>
-            <div className="stat-value">{stats.failed.toLocaleString()}</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">성공률</div>
-            <div className="stat-value">{getSuccessRate()}</div>
-          </div>
-        </div>
-
-        <div className="progress-section">
-          <div className="progress-info">
-            <span>경과: {formatTime(stats.elapsedSeconds)}</span>
-            <span>목표: {formatTime(duration)}</span>
-          </div>
-          <div className="progress-bar">
-            <div
-              className="progress-fill"
-              style={{ width: `${Math.min((stats.elapsedSeconds / duration) * 100, 100)}%` }}
-            />
-          </div>
-        </div>
-      </section>
-
-      {testId && (
+      {(isRunning || testResult) && (
         <section className="section">
-          <h2>테스트 결과</h2>
+          <h2>진행 상황</h2>
           <div className="card">
-            <div className="result-info">
-              <div><strong>테스트 ID:</strong> {testId}</div>
-              <div><strong>총 요청:</strong> {stats.sent.toLocaleString()}건</div>
-              <div><strong>성공:</strong> {stats.success.toLocaleString()}건</div>
-              <div><strong>실패:</strong> {stats.failed.toLocaleString()}건</div>
-              <div><strong>성공률:</strong> {getSuccessRate()}</div>
-            </div>
-            {region === 'route53' ? (
-              <div className="button-group">
-                <button className="btn btn-secondary" onClick={() => downloadLogs('seoul')} disabled={isRunning}>
-                  서울 로그 (CSV)
-                </button>
-                <button className="btn btn-secondary" onClick={() => downloadLogs('tokyo')} disabled={isRunning}>
-                  도쿄 로그 (CSV)
-                </button>
-                <button className="btn btn-secondary" onClick={() => downloadLogs()} disabled={isRunning}>
-                  전체 다운로드
-                </button>
+            <div className="progress-section">
+              <div className="progress-info">
+                <span>경과: {formatTime(elapsedSeconds)}</span>
+                <span>목표: {formatTime(duration)}</span>
               </div>
-            ) : (
-              <button className="btn btn-secondary" onClick={() => downloadLogs()} disabled={isRunning}>
-                로그 다운로드 (CSV)
-              </button>
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: `${Math.min((elapsedSeconds/duration)*100, 100)}%` }} />
+              </div>
+            </div>
+
+            {testResult && (
+              <div className="result-info">
+                <div><strong>상태:</strong> {testResult.status}</div>
+                <div><strong>실행 인스턴스:</strong> {testResult.location?.instanceId} ({testResult.location?.region})</div>
+                <div><strong>설정:</strong> {testResult.config?.totalRequests?.toLocaleString()}건, {testResult.config?.concurrency}동시연결</div>
+              </div>
+            )}
+
+            {elapsedSeconds >= duration && (
+              <div className="completion-message">
+                <p><strong>테스트 완료!</strong> CloudWatch에서 확인:</p>
+                <ul>
+                  <li>EC2 → Auto Scaling Groups → CPU / 인스턴스 수</li>
+                  <li>CloudWatch → Metrics → CPUUtilization</li>
+                </ul>
+              </div>
             )}
           </div>
         </section>
       )}
 
+      {error && <div className="card error"><strong>오류:</strong> {error}</div>}
+
       <section className="section">
-        <h2>테스트 시나리오</h2>
-        <div className="scenario-table">
-          <table>
-            <thead>
-              <tr>
-                <th>시나리오</th>
-                <th>TPS</th>
-                <th>5분 총 요청</th>
-                <th>예상 결과</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>평상시</td>
-                <td>7</td>
-                <td>2,100</td>
-                <td>스케일 없음</td>
-              </tr>
-              <tr>
-                <td>저녁 피크</td>
-                <td>22</td>
-                <td>6,600</td>
-                <td>스케일 아웃 가능</td>
-              </tr>
-              <tr className="highlight">
-                <td>급증 피크</td>
-                <td>62</td>
-                <td>18,600</td>
-                <td>스케일 아웃 필수</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <h2>시나리오</h2>
+        <table className="scenario-table">
+          <thead><tr><th>시나리오</th><th>TPS</th><th>5분 요청</th><th>내부처리</th><th>예상</th></tr></thead>
+          <tbody>
+            <tr><td>평상시</td><td>7</td><td>2,100</td><td>29,400</td><td>스케일 없음</td></tr>
+            <tr><td>저녁 피크</td><td>22</td><td>6,600</td><td>92,400</td><td>스케일 가능</td></tr>
+            <tr className="highlight"><td>급증 (3배)</td><td>62</td><td>18,600</td><td>260,400</td><td>스케일 필수</td></tr>
+          </tbody>
+        </table>
       </section>
     </div>
   )
