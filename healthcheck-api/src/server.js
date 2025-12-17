@@ -58,72 +58,98 @@ app.get('/ping', async (req, res) => {
   });
 });
 
+// 로그 저장 헬퍼 함수
+const saveTransactionLog = (testId, requestId, status, processingMs, location, errorMsg = null) => {
+  if (!testId) return;
+
+  const timestamp = new Date().toISOString();
+  const logEntry = {
+    timestamp,
+    testId,
+    requestId: requestId || 'req-' + Date.now(),
+    status,
+    processingMs,
+    instanceId: location.instanceId,
+    region: location.region,
+    az: location.az,
+    error: errorMsg,
+  };
+
+  if (!testLogs.has(testId)) {
+    testLogs.set(testId, []);
+  }
+  testLogs.get(testId).push(logEntry);
+
+  const logFile = path.join(LOG_DIR, testId + '.csv');
+  const csvLine = [logEntry.timestamp, logEntry.testId, logEntry.requestId, logEntry.status, logEntry.processingMs, logEntry.instanceId, logEntry.region, logEntry.az, errorMsg || ''].join(',') + '\n';
+
+  if (!fsModule.existsSync(logFile)) {
+    fsModule.writeFileSync(logFile, 'timestamp,test_id,request_id,status,processing_ms,instance_id,region,az,error\n');
+  }
+  fsModule.appendFileSync(logFile, csvLine);
+};
+
 // 트랜잭션 시뮬레이션 (피크 트래픽 테스트용) - 금융권 실제 처리 시뮬레이션
 app.post('/transaction', async (req, res) => {
   const startTime = Date.now();
   const { testId, requestId, intensity = 'heavy' } = req.body;
-  const location = await getLocation();
+  let location = { region: 'unknown', az: 'unknown', instanceId: 'unknown' };
 
-  // 강도별 암호화 반복 횟수 설정
-  const intensityConfig = {
-    light: { iterations: 5000, rounds: 2 },
-    medium: { iterations: 10000, rounds: 3 },
-    heavy: { iterations: 20000, rounds: 5 },
-  };
-  const config = intensityConfig[intensity] || intensityConfig.medium;
+  try {
+    location = await getLocation();
 
-  // 1. 요청 데이터 검증 (해시 계산)
-  const requestData = JSON.stringify({ testId, requestId, timestamp: Date.now(), nonce: Math.random() });
-  const requestHash = crypto.createHash('sha256').update(requestData).digest('hex');
+    // 강도별 암호화 반복 횟수 설정
+    const intensityConfig = {
+      light: { iterations: 5000, rounds: 2 },
+      medium: { iterations: 10000, rounds: 3 },
+      heavy: { iterations: 20000, rounds: 5 },
+    };
+    const config = intensityConfig[intensity] || intensityConfig.medium;
 
-  // 2. 금융 거래 암호화 처리 (CPU intensive - 실제 금융권 HSM 처리 시뮬레이션)
-  let encryptedData = crypto.pbkdf2Sync(requestHash, 'financial-tx-salt', config.iterations, 64, 'sha512');
+    // 1. 요청 데이터 검증 (해시 계산)
+    const requestData = JSON.stringify({ testId, requestId, timestamp: Date.now(), nonce: Math.random() });
+    const requestHash = crypto.createHash('sha256').update(requestData).digest('hex');
 
-  // 3. 다중 서명 검증 시뮬레이션 (여러 차례 해시 체인)
-  for (let i = 0; i < config.rounds; i++) {
-    encryptedData = crypto.pbkdf2Sync(encryptedData.toString('hex'), `round-${i}-salt`, config.iterations / 2, 32, 'sha512');
-  }
+    // 2. 금융 거래 암호화 처리 (CPU intensive - 실제 금융권 HSM 처리 시뮬레이션)
+    let encryptedData = crypto.pbkdf2Sync(requestHash, 'financial-tx-salt', config.iterations, 64, 'sha512');
 
-  // 4. 응답 서명 생성
-  const responseSignature = crypto.createHmac('sha256', encryptedData).update(requestHash).digest('hex');
+    // 3. 다중 서명 검증 시뮬레이션 (여러 차례 해시 체인)
+    for (let i = 0; i < config.rounds; i++) {
+      encryptedData = crypto.pbkdf2Sync(encryptedData.toString('hex'), `round-${i}-salt`, config.iterations / 2, 32, 'sha512');
+    }
 
-  const timestamp = new Date().toISOString();
-  const actualProcessingTime = Date.now() - startTime;
+    // 4. 응답 서명 생성
+    const responseSignature = crypto.createHmac('sha256', encryptedData).update(requestHash).digest('hex');
 
-  if (testId) {
-    const logEntry = {
-      timestamp,
+    const processingMs = Date.now() - startTime;
+
+    // 성공 로그 저장
+    saveTransactionLog(testId, requestId, 'success', processingMs, location);
+
+    res.json({
+      status: 'success',
       testId,
       requestId: requestId || 'req-' + Date.now(),
-      status: 'success',
-      processingMs: actualProcessingTime,
-      instanceId: location.instanceId,
-      region: location.region,
-      az: location.az,
-    };
+      processingMs,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    const processingMs = Date.now() - startTime;
 
-    if (!testLogs.has(testId)) {
-      testLogs.set(testId, []);
-    }
-    testLogs.get(testId).push(logEntry);
+    // 실패 로그 저장
+    saveTransactionLog(testId, requestId, 'failed', processingMs, location, error.message);
 
-    const logFile = path.join(LOG_DIR, testId + '.csv');
-    const csvLine = [logEntry.timestamp, logEntry.testId, logEntry.requestId, logEntry.status, logEntry.processingMs, logEntry.instanceId, logEntry.region, logEntry.az].join(',') + '\n';
-
-    if (!fsModule.existsSync(logFile)) {
-      fsModule.writeFileSync(logFile, 'timestamp,test_id,request_id,status,processing_ms,instance_id,region,az\n');
-    }
-    fsModule.appendFileSync(logFile, csvLine);
+    res.status(500).json({
+      status: 'failed',
+      testId,
+      requestId: requestId || 'req-' + Date.now(),
+      processingMs,
+      location,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
   }
-
-  res.json({
-    status: 'success',
-    testId,
-    requestId: requestId || 'req-' + Date.now(),
-    processingMs: actualProcessingTime,
-    location,
-    timestamp,
-  });
 });
 
 // 테스트 로그 조회
