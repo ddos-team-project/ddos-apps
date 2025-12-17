@@ -14,6 +14,7 @@ const { runCpuStress } = require('./cpuStress');
 const { runDbStress, cleanupTestData } = require('./dbStress');
 const { runRpoTest, runGlobalRpoTest, writeMarker, readMarker, deleteMarker } = require('./rpoTest');
 const { startBackgroundLoad, stopBackgroundLoad, getBackgroundLoadStatus } = require('./backgroundLoad');
+const { performRead, performWrite, cleanupOldData } = require('./failoverTest');
 
 const app = express();
 app.use(express.json());
@@ -626,6 +627,140 @@ app.post('/load-test/stop', async (req, res) => {
       status: 'stopped',
       testId,
       message: 'Load test stopped',
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      error: error.message,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// ============================================
+// 페일오버 테스트용 가벼운 읽기/쓰기 엔드포인트
+// CPU 부하 없이 6개 메트릭 측정 전용
+// ============================================
+
+// 읽기 테스트 - 가벼운 SELECT (Write Forwarding OFF 시에도 성공)
+app.get('/api/read', async (req, res) => {
+  const startTime = Date.now();
+  const location = await getLocation();
+
+  try {
+    const result = await performRead();
+    const responseTimeMs = Date.now() - startTime;
+
+    res.json({
+      ...result,
+      responseTimeMs,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    const responseTimeMs = Date.now() - startTime;
+
+    res.status(500).json({
+      status: 'error',
+      type: 'read',
+      error: error.message,
+      errorCode: error.code,
+      responseTimeMs,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// 쓰기 테스트 - 가벼운 INSERT (Write Forwarding OFF 시 도쿄에서 5xx 에러)
+app.post('/api/write', async (req, res) => {
+  const startTime = Date.now();
+  const location = await getLocation();
+
+  try {
+    const result = await performWrite(location.region);
+    const responseTimeMs = Date.now() - startTime;
+
+    res.json({
+      ...result,
+      responseTimeMs,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    const responseTimeMs = Date.now() - startTime;
+
+    // Write Forwarding OFF 에러 감지
+    const isReadOnlyError =
+      error.code === 'ER_OPTION_PREVENTS_STATEMENT' ||
+      error.message.includes('read-only') ||
+      error.message.includes('READ ONLY') ||
+      error.code === 'ER_READ_ONLY_MODE';
+
+    res.status(500).json({
+      status: 'error',
+      type: 'write',
+      error: error.message,
+      errorCode: error.code,
+      isReadOnlyError,
+      responseTimeMs,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// 혼합 트래픽 - 읽기 70%, 쓰기 30% (실제 서비스 패턴)
+app.post('/api/traffic', async (req, res) => {
+  const startTime = Date.now();
+  const location = await getLocation();
+  const isWrite = Math.random() < 0.3;
+
+  try {
+    const result = isWrite
+      ? await performWrite(location.region)
+      : await performRead();
+    const responseTimeMs = Date.now() - startTime;
+
+    res.json({
+      ...result,
+      responseTimeMs,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    const responseTimeMs = Date.now() - startTime;
+
+    const isReadOnlyError =
+      error.code === 'ER_OPTION_PREVENTS_STATEMENT' ||
+      error.message.includes('read-only') ||
+      error.message.includes('READ ONLY') ||
+      error.code === 'ER_READ_ONLY_MODE';
+
+    res.status(500).json({
+      status: 'error',
+      type: isWrite ? 'write' : 'read',
+      error: error.message,
+      errorCode: error.code,
+      isReadOnlyError,
+      responseTimeMs,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// 테스트 데이터 정리
+app.delete('/api/traffic/cleanup', async (req, res) => {
+  const location = await getLocation();
+
+  try {
+    const result = await cleanupOldData();
+    res.json({
+      ...result,
       location,
       timestamp: new Date().toISOString(),
     });
