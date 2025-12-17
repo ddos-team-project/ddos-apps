@@ -9,11 +9,13 @@ export default function LoadTest() {
 
   // 상태
   const [isRunning, setIsRunning] = useState(false)
+  const [isStopping, setIsStopping] = useState(false)
   const [testResult, setTestResult] = useState(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [error, setError] = useState(null)
 
   const timerRef = useRef(null)
+  const abortControllerRef = useRef(null)
 
   const tpsOptions = [
     { value: 7, label: '7 TPS', desc: '평상시' },
@@ -25,13 +27,17 @@ export default function LoadTest() {
     { value: 60, label: '1분' },
     { value: 300, label: '5분' },
     { value: 600, label: '10분' },
+    { value: 1800, label: '30분' },
   ]
 
   const startTest = async () => {
     setIsRunning(true)
+    setIsStopping(false)
     setError(null)
     setTestResult(null)
     setElapsedSeconds(0)
+
+    abortControllerRef.current = new AbortController()
 
     const startTime = Date.now()
     timerRef.current = setInterval(() => {
@@ -48,18 +54,54 @@ export default function LoadTest() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tps, duration, target: 'alb' }),
+        signal: abortControllerRef.current.signal,
       })
       const data = await response.json()
       setTestResult(data)
     } catch (err) {
-      setError(err.message)
+      if (err.name === 'AbortError') {
+        setTestResult({ status: '테스트 중단됨' })
+      } else {
+        setError(err.message)
+      }
       setIsRunning(false)
       clearInterval(timerRef.current)
     }
   }
 
+  const stopTest = async () => {
+    setIsStopping(true)
+
+    // 클라이언트 측 타이머 중단
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+    }
+
+    // fetch 요청 취소
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+
+    // 서버에 중단 요청
+    try {
+      await fetch(`${API_URL}/load-test/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+    } catch (err) {
+      console.log('Stop request error:', err.message)
+    }
+
+    setIsRunning(false)
+    setIsStopping(false)
+    setTestResult({ status: '테스트 중단됨' })
+  }
+
   useEffect(() => {
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+      if (abortControllerRef.current) abortControllerRef.current.abort()
+    }
   }, [])
 
   const formatTime = (s) => `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`
@@ -111,6 +153,11 @@ export default function LoadTest() {
             <button className="btn btn-primary btn-large" onClick={startTest} disabled={isRunning}>
               {isRunning ? '테스트 진행 중...' : '부하 테스트 시작'}
             </button>
+            {isRunning && (
+              <button className="btn btn-danger btn-large" onClick={stopTest} disabled={isStopping}>
+                {isStopping ? '중단 중...' : '테스트 중단'}
+              </button>
+            )}
           </div>
         </div>
       </section>
