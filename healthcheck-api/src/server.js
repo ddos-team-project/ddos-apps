@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const crypto = require('crypto');
 const fsModule = require('fs');
 const path = require('path');
 const { getLocation } = require('./instanceLocation');
@@ -57,15 +58,34 @@ app.get('/ping', async (req, res) => {
   });
 });
 
-// 트랜잭션 시뮬레이션 (피크 트래픽 테스트용)
+// 트랜잭션 시뮬레이션 (피크 트래픽 테스트용) - 금융권 실제 처리 시뮬레이션
 app.post('/transaction', async (req, res) => {
   const startTime = Date.now();
-  const { testId, requestId } = req.body;
+  const { testId, requestId, intensity = 'medium' } = req.body;
   const location = await getLocation();
 
-  // 실제 거래 처리 시뮬레이션 (100~500ms 랜덤 지연)
-  const processingTime = Math.floor(Math.random() * 400) + 100;
-  await new Promise(resolve => setTimeout(resolve, processingTime));
+  // 강도별 암호화 반복 횟수 설정
+  const intensityConfig = {
+    light: { iterations: 5000, rounds: 2 },
+    medium: { iterations: 10000, rounds: 3 },
+    heavy: { iterations: 20000, rounds: 5 },
+  };
+  const config = intensityConfig[intensity] || intensityConfig.medium;
+
+  // 1. 요청 데이터 검증 (해시 계산)
+  const requestData = JSON.stringify({ testId, requestId, timestamp: Date.now(), nonce: Math.random() });
+  const requestHash = crypto.createHash('sha256').update(requestData).digest('hex');
+
+  // 2. 금융 거래 암호화 처리 (CPU intensive - 실제 금융권 HSM 처리 시뮬레이션)
+  let encryptedData = crypto.pbkdf2Sync(requestHash, 'financial-tx-salt', config.iterations, 64, 'sha512');
+
+  // 3. 다중 서명 검증 시뮬레이션 (여러 차례 해시 체인)
+  for (let i = 0; i < config.rounds; i++) {
+    encryptedData = crypto.pbkdf2Sync(encryptedData.toString('hex'), `round-${i}-salt`, config.iterations / 2, 32, 'sha512');
+  }
+
+  // 4. 응답 서명 생성
+  const responseSignature = crypto.createHmac('sha256', encryptedData).update(requestHash).digest('hex');
 
   const timestamp = new Date().toISOString();
   const actualProcessingTime = Date.now() - startTime;
@@ -422,16 +442,8 @@ app.get('/warm-up', async (req, res) => {
   });
 });
 
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
-
-  // 서버 시작 시 기본 CPU 부하 40% 자동 시작 (실제 서비스 환경 시뮬레이션)
-  if (ALLOW_STRESS) {
-    try {
-      const result = await startBackgroundLoad(40, 2);
-      console.log(`[WARM-UP] Auto-started: ${JSON.stringify(result)}`);
-    } catch (err) {
-      console.error('[WARM-UP] Auto-start failed:', err.message);
-    }
-  }
+  console.log(`[CONFIG] ALLOW_STRESS=${ALLOW_STRESS}`);
+  // 백그라운드 부하 제거 - /transaction 요청 시 실제 암호화 처리로 CPU 사용
 });
