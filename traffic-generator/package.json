@@ -1,0 +1,15 @@
+{
+  "name": "traffic-generator",
+  "version": "1.0.0",
+  "description": "페일오버 테스트용 트래픽 생성기 - 서울 400req/min, 도쿄 100req/min",
+  "main": "src/generator.js",
+  "scripts": {
+    "start": "node src/generator.js",
+    "seoul": "node src/generator.js --target seoul",
+    "tokyo": "node src/generator.js --target tokyo",
+    "both": "node src/generator.js --target both"
+  },
+  "keywords": ["failover", "traffic", "test"],
+  "license": "ISC",
+  "dependencies": {}
+}
