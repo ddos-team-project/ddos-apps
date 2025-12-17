@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --check:*)",
+      "Bash(npx vite build)",
+      "Bash(git reset:*)"
+    ]
+  }
+}
