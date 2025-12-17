@@ -1,8 +1,13 @@
 const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
+const { promisify } = require('util');
+const { exec } = require('child_process');
 const fsModule = require('fs');
 const path = require('path');
+
+// 비동기 pbkdf2 (libuv 스레드 풀에서 병렬 실행)
+const pbkdf2Async = promisify(crypto.pbkdf2);
 const { getLocation } = require('./instanceLocation');
 const { checkDbHealth, getWriterPool, getReaderPool, getTokyoReaderPool } = require('./dbHealth');
 const { runCpuStress } = require('./cpuStress');
@@ -89,37 +94,66 @@ const saveTransactionLog = (testId, requestId, status, processingMs, location, e
   fsModule.appendFileSync(logFile, csvLine);
 };
 
-// 트랜잭션 시뮬레이션 (피크 트래픽 테스트용) - 금융권 실제 처리 시뮬레이션
+// 금융권 거래 처리 시뮬레이션 (요청 1개당 내부 10~15회 처리)
 app.post('/transaction', async (req, res) => {
   const startTime = Date.now();
-  const { testId, requestId, intensity = 'heavy' } = req.body;
+  const { testId, requestId } = req.body;
   let location = { region: 'unknown', az: 'unknown', instanceId: 'unknown' };
+  const steps = []; // 각 단계별 처리 시간 기록
+
+  // 내부 처리 헬퍼 함수
+  const processStep = async (stepName, iterations = 10000) => {
+    const stepStart = Date.now();
+    await pbkdf2Async(stepName + Date.now(), 'step-salt', iterations, 32, 'sha512');
+    steps.push({ step: stepName, ms: Date.now() - stepStart });
+  };
 
   try {
     location = await getLocation();
 
-    // 강도별 암호화 반복 횟수 설정 (CPU 부하 충분히 주기 위해 높게 설정)
-    const intensityConfig = {
-      light: { iterations: 50000, rounds: 5 },
-      medium: { iterations: 100000, rounds: 10 },
-      heavy: { iterations: 200000, rounds: 15 },
-    };
-    const config = intensityConfig[intensity] || intensityConfig.medium;
+    // === 금융 거래 내부 처리 시뮬레이션 (10~15단계) ===
 
-    // 1. 요청 데이터 검증 (해시 계산)
-    const requestData = JSON.stringify({ testId, requestId, timestamp: Date.now(), nonce: Math.random() });
-    const requestHash = crypto.createHash('sha256').update(requestData).digest('hex');
+    // 1. 요청 토큰 검증 (JWT 검증 시뮬레이션)
+    await processStep('token_validation', 15000);
 
-    // 2. 금융 거래 암호화 처리 (CPU intensive - 실제 금융권 HSM 처리 시뮬레이션)
-    let encryptedData = crypto.pbkdf2Sync(requestHash, 'financial-tx-salt', config.iterations, 64, 'sha512');
+    // 2. 사용자 인증 확인 (세션/권한 확인)
+    await processStep('auth_check', 12000);
 
-    // 3. 다중 서명 검증 시뮬레이션 (여러 차례 해시 체인)
-    for (let i = 0; i < config.rounds; i++) {
-      encryptedData = crypto.pbkdf2Sync(encryptedData.toString('hex'), `round-${i}-salt`, config.iterations / 2, 32, 'sha512');
-    }
+    // 3. 출금 계좌 정보 조회 (DB SELECT 시뮬레이션)
+    await processStep('sender_account_lookup', 10000);
 
-    // 4. 응답 서명 생성
-    const responseSignature = crypto.createHmac('sha256', encryptedData).update(requestHash).digest('hex');
+    // 4. 출금 계좌 잔액 확인 (DB SELECT + 계산)
+    await processStep('balance_check', 12000);
+
+    // 5. 일일 이체 한도 검증 (DB SELECT + 계산)
+    await processStep('daily_limit_check', 10000);
+
+    // 6. 수취인 계좌 검증 (타행 조회 시뮬레이션)
+    await processStep('receiver_account_validation', 15000);
+
+    // 7. 사기 탐지 검증 (FDS 시뮬레이션)
+    await processStep('fraud_detection', 18000);
+
+    // 8. 거래 유효성 최종 검증
+    await processStep('transaction_validation', 10000);
+
+    // 9. 출금 처리 (DB UPDATE)
+    await processStep('withdraw_process', 12000);
+
+    // 10. 입금 처리 (DB UPDATE)
+    await processStep('deposit_process', 12000);
+
+    // 11. 수수료 계산 및 처리
+    await processStep('fee_calculation', 8000);
+
+    // 12. 거래 로그 기록 (DB INSERT)
+    await processStep('transaction_logging', 10000);
+
+    // 13. 알림 발송 준비 (암호화)
+    await processStep('notification_prepare', 10000);
+
+    // 14. 최종 거래 서명 생성
+    await processStep('final_signature', 15000);
 
     const processingMs = Date.now() - startTime;
 
@@ -131,6 +165,7 @@ app.post('/transaction', async (req, res) => {
       testId,
       requestId: requestId || 'req-' + Date.now(),
       processingMs,
+      stepsCount: steps.length,
       location,
       timestamp: new Date().toISOString(),
     });
@@ -145,6 +180,7 @@ app.post('/transaction', async (req, res) => {
       testId,
       requestId: requestId || 'req-' + Date.now(),
       processingMs,
+      stepsCompleted: steps.length,
       location,
       error: error.message,
       timestamp: new Date().toISOString(),
@@ -468,8 +504,82 @@ app.get('/warm-up', async (req, res) => {
   });
 });
 
+// 서버사이드 부하 테스트 (ab 사용)
+app.post('/load-test', async (req, res) => {
+  if (!ALLOW_STRESS) {
+    return res.status(403).json({ status: 'forbidden', message: 'load-test endpoint disabled' });
+  }
+
+  const location = await getLocation();
+  const { tps = 22, duration = 60, target = 'alb' } = req.body;
+
+  // 총 요청 수 = TPS × duration
+  const totalRequests = tps * duration;
+  const concurrency = Math.min(tps, 100); // 동시 연결 수 (최대 100)
+
+  // 타겟 URL 설정 (ALB를 통해 모든 인스턴스에 분산)
+  const targetUrl = target === 'alb'
+    ? 'https://tier1.ddos.io.kr/transaction'
+    : `https://${target}.tier1.ddos.io.kr/transaction`;
+
+  // ab 명령어 구성
+  const abCommand = `ab -n ${totalRequests} -c ${concurrency} -T 'application/json' -p /tmp/ab-post-data.json -s 30 "${targetUrl}" 2>&1`;
+
+  // POST 데이터 파일 생성
+  const postData = JSON.stringify({ testId: `load-${Date.now()}`, intensity: 'heavy' });
+
+  try {
+    fsModule.writeFileSync('/tmp/ab-post-data.json', postData);
+
+    console.log(`[LOAD-TEST] Starting: ${abCommand}`);
+
+    exec(abCommand, { timeout: (duration + 60) * 1000, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+      // ab 결과 파싱
+      const result = {
+        status: error ? 'completed_with_errors' : 'success',
+        config: { tps, duration, totalRequests, concurrency, targetUrl },
+        location,
+        timestamp: new Date().toISOString(),
+        rawOutput: stdout || stderr,
+      };
+
+      // ab 출력에서 주요 지표 추출
+      const metrics = {};
+      const rpsMatch = stdout.match(/Requests per second:\s+([\d.]+)/);
+      const timeMatch = stdout.match(/Time taken for tests:\s+([\d.]+)/);
+      const failedMatch = stdout.match(/Failed requests:\s+(\d+)/);
+      const completeMatch = stdout.match(/Complete requests:\s+(\d+)/);
+
+      if (rpsMatch) metrics.requestsPerSecond = parseFloat(rpsMatch[1]);
+      if (timeMatch) metrics.totalTimeSeconds = parseFloat(timeMatch[1]);
+      if (failedMatch) metrics.failedRequests = parseInt(failedMatch[1]);
+      if (completeMatch) metrics.completeRequests = parseInt(completeMatch[1]);
+
+      result.metrics = metrics;
+
+      console.log(`[LOAD-TEST] Completed: ${JSON.stringify(metrics)}`);
+    });
+
+    // 즉시 응답 (테스트는 백그라운드에서 실행)
+    res.json({
+      status: 'started',
+      message: `Load test started: ${totalRequests} requests at ${concurrency} concurrency`,
+      config: { tps, duration, totalRequests, concurrency, targetUrl },
+      location,
+      timestamp: new Date().toISOString(),
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      error: error.message,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
   console.log(`[CONFIG] ALLOW_STRESS=${ALLOW_STRESS}`);
-  // 백그라운드 부하 제거 - /transaction 요청 시 실제 암호화 처리로 CPU 사용
 });
