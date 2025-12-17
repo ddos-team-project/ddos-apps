@@ -1,13 +1,27 @@
 import React, { useState, useRef, useEffect } from 'react'
 
 const API_URLS = {
+  route53: 'https://{random}.tier1.ddos.io.kr', // DNS 캐싱 무시를 위해 랜덤 서브도메인 사용
   seoul: 'https://seoul.tier1.ddos.io.kr',
   tokyo: 'https://tokyo.tier1.ddos.io.kr',
 }
 
+// 랜덤 문자열 생성 (DNS 캐싱 무시용)
+const generateRandomSubdomain = () => {
+  return Math.random().toString(36).substring(2, 10)
+}
+
+// 리전에 따른 URL 반환
+const getApiUrl = (region) => {
+  if (region === 'route53') {
+    return API_URLS.route53.replace('{random}', generateRandomSubdomain())
+  }
+  return API_URLS[region]
+}
+
 export default function LoadTest() {
   // 설정
-  const [region, setRegion] = useState('seoul')
+  const [region, setRegion] = useState('route53')
   const [tps, setTps] = useState(22)
   const [duration, setDuration] = useState(600) // 초 단위
 
@@ -49,7 +63,8 @@ export default function LoadTest() {
   // 단일 트랜잭션 전송
   const sendTransaction = async (currentTestId, requestId) => {
     try {
-      const response = await fetch(`${API_URLS[region]}/transaction`, {
+      const apiUrl = getApiUrl(region)
+      const response = await fetch(`${apiUrl}/transaction`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ testId: currentTestId, requestId }),
@@ -127,9 +142,21 @@ export default function LoadTest() {
   }
 
   // 로그 다운로드
-  const downloadLogs = async () => {
+  const downloadLogs = async (targetRegion) => {
     if (!testId) return
-    window.open(`${API_URLS[region]}/test-logs?testId=${testId}&format=csv`, '_blank')
+    if (targetRegion) {
+      // 특정 리전 로그 다운로드
+      window.open(`${API_URLS[targetRegion]}/test-logs?testId=${testId}&format=csv`, '_blank')
+    } else if (region === 'route53') {
+      // Route53 모드: 양쪽 리전 로그 모두 다운로드
+      window.open(`${API_URLS.seoul}/test-logs?testId=${testId}&format=csv`, '_blank')
+      setTimeout(() => {
+        window.open(`${API_URLS.tokyo}/test-logs?testId=${testId}&format=csv`, '_blank')
+      }, 500)
+    } else {
+      // 단일 리전 로그 다운로드
+      window.open(`${API_URLS[region]}/test-logs?testId=${testId}&format=csv`, '_blank')
+    }
   }
 
   // 컴포넌트 언마운트 시 정리
@@ -165,11 +192,20 @@ export default function LoadTest() {
             <label>리전</label>
             <div className="button-group">
               <button
+                className={region === 'route53' ? 'active' : ''}
+                onClick={() => setRegion('route53')}
+                disabled={isRunning}
+              >
+                Route53 (자동)
+                <small>트래픽 분배</small>
+              </button>
+              <button
                 className={region === 'seoul' ? 'active' : ''}
                 onClick={() => setRegion('seoul')}
                 disabled={isRunning}
               >
                 서울
+                <small>직접 지정</small>
               </button>
               <button
                 className={region === 'tokyo' ? 'active' : ''}
@@ -177,6 +213,7 @@ export default function LoadTest() {
                 disabled={isRunning}
               >
                 도쿄
+                <small>직접 지정</small>
               </button>
             </div>
           </div>
@@ -274,9 +311,23 @@ export default function LoadTest() {
               <div><strong>실패:</strong> {stats.failed.toLocaleString()}건</div>
               <div><strong>성공률:</strong> {getSuccessRate()}</div>
             </div>
-            <button className="btn btn-secondary" onClick={downloadLogs} disabled={isRunning}>
-              로그 다운로드 (CSV)
-            </button>
+            {region === 'route53' ? (
+              <div className="button-group">
+                <button className="btn btn-secondary" onClick={() => downloadLogs('seoul')} disabled={isRunning}>
+                  서울 로그 (CSV)
+                </button>
+                <button className="btn btn-secondary" onClick={() => downloadLogs('tokyo')} disabled={isRunning}>
+                  도쿄 로그 (CSV)
+                </button>
+                <button className="btn btn-secondary" onClick={() => downloadLogs()} disabled={isRunning}>
+                  전체 다운로드
+                </button>
+              </div>
+            ) : (
+              <button className="btn btn-secondary" onClick={() => downloadLogs()} disabled={isRunning}>
+                로그 다운로드 (CSV)
+              </button>
+            )}
           </div>
         </section>
       )}
