@@ -26,12 +26,6 @@ export default function Sidebar() {
             <span className="menu-text">DB 테스트</span>
           </NavLink>
         </li>
-        <li>
-          <NavLink to="/failover" className={({ isActive }) => isActive ? 'active' : ''}>
-            <span className="menu-icon">🔄</span>
-            <span className="menu-text">DR Failover</span>
-          </NavLink>
-        </li>
       </ul>
     </nav>
   )
