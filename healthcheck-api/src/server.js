@@ -7,6 +7,7 @@ const { checkDbHealth, getWriterPool, getReaderPool, getTokyoReaderPool } = requ
 const { runCpuStress } = require('./cpuStress');
 const { runDbStress, cleanupTestData } = require('./dbStress');
 const { runRpoTest, runGlobalRpoTest, writeMarker, readMarker, deleteMarker } = require('./rpoTest');
+const { startBackgroundLoad, stopBackgroundLoad, getBackgroundLoadStatus } = require('./backgroundLoad');
 
 const app = express();
 app.use(express.json());
@@ -370,6 +371,67 @@ app.get('/idc-health', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+// 백그라운드 CPU 부하 (Warm-up) - 실제 서비스 환경 시뮬레이션
+app.post('/warm-up', async (req, res) => {
+  if (!ALLOW_STRESS) {
+    return res.status(403).json({ status: 'forbidden', message: 'warm-up endpoint disabled' });
+  }
+
+  const { targetCpu = 60, cores = 1 } = req.body;
+  const location = await getLocation();
+
+  try {
+    const result = await startBackgroundLoad(targetCpu, cores);
+    res.json({
+      ...result,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({ status: 'error', error: error.message, location, timestamp: new Date().toISOString() });
+  }
+});
+
+app.delete('/warm-up', async (req, res) => {
+  if (!ALLOW_STRESS) {
+    return res.status(403).json({ status: 'forbidden', message: 'warm-up endpoint disabled' });
+  }
+
+  const location = await getLocation();
+
+  try {
+    const result = await stopBackgroundLoad();
+    res.json({
+      ...result,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({ status: 'error', error: error.message, location, timestamp: new Date().toISOString() });
+  }
+});
+
+app.get('/warm-up', async (req, res) => {
+  const location = await getLocation();
+  const status = getBackgroundLoadStatus();
+
+  res.json({
+    ...status,
+    location,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.listen(PORT, async () => {
   console.log(`Server listening on port ${PORT}`);
+
+  // 서버 시작 시 기본 CPU 부하 30% 자동 시작 (실제 서비스 환경 시뮬레이션)
+  if (ALLOW_STRESS) {
+    try {
+      const result = await startBackgroundLoad(30, 1);
+      console.log(`[WARM-UP] Auto-started: ${JSON.stringify(result)}`);
+    } catch (err) {
+      console.error('[WARM-UP] Auto-start failed:', err.message);
+    }
+  }
 });
