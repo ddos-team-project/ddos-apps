@@ -61,7 +61,7 @@ app.get('/ping', async (req, res) => {
 // 트랜잭션 시뮬레이션 (피크 트래픽 테스트용) - 금융권 실제 처리 시뮬레이션
 app.post('/transaction', async (req, res) => {
   const startTime = Date.now();
-  const { testId, requestId, intensity = 'medium' } = req.body;
+  const { testId, requestId, intensity = 'heavy' } = req.body;
   const location = await getLocation();
 
   // 강도별 암호화 반복 횟수 설정
