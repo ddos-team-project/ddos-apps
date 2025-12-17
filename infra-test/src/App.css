@@ -1455,6 +1455,46 @@ body {
   cursor: not-allowed;
 }
 
+.db-regions-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.db-region-section {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  padding: 1rem;
+  border-left: 3px solid;
+}
+
+.db-region-section.seoul {
+  border-left-color: #667eea;
+}
+
+.db-region-section.tokyo {
+  border-left-color: #f093fb;
+}
+
+.db-region-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.db-region-header .region-flag {
+  font-size: 1.2rem;
+}
+
+.db-region-header .region-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #ccd6f6;
+}
+
 .db-info-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

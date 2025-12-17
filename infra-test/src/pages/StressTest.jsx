@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react'
 import { getApiUrl, getSeoulApiUrl, getTokyoApiUrl } from '../components/api'
 
 export default function StressTest() {
-  // DB Info State
-  const [dbInfo, setDbInfo] = useState(null)
+  // DB Info State (리전별)
+  const [seoulDbInfo, setSeoulDbInfo] = useState(null)
+  const [tokyoDbInfo, setTokyoDbInfo] = useState(null)
   const [dbInfoLoading, setDbInfoLoading] = useState(false)
 
   // DB Stress State
@@ -36,9 +37,21 @@ export default function StressTest() {
   const fetchDbInfo = async () => {
     setDbInfoLoading(true)
     try {
-      const response = await fetch(`${getApiUrl()}/db-info`)
-      const data = await response.json()
-      setDbInfo(data)
+      // 서울과 도쿄에서 각각 db-info 가져오기
+      const [seoulRes, tokyoRes] = await Promise.all([
+        fetch(`${getSeoulApiUrl()}/db-info`).catch(() => null),
+        fetch(`${getTokyoApiUrl()}/db-info`).catch(() => null),
+      ])
+
+      if (seoulRes) {
+        const seoulData = await seoulRes.json()
+        setSeoulDbInfo(seoulData)
+      }
+
+      if (tokyoRes) {
+        const tokyoData = await tokyoRes.json()
+        setTokyoDbInfo(tokyoData)
+      }
     } catch (err) {
       console.error('DB Info fetch error:', err)
     } finally {
@@ -134,19 +147,41 @@ export default function StressTest() {
     const results = []
     const errors = []
 
+    // API URL을 미리 생성 (같은 세션에서 동일 URL 사용)
+    const seoulUrl = getSeoulApiUrl()
+    const tokyoUrl = getTokyoApiUrl()
+
     try {
       for (let i = 0; i < crossRegionConfig.iterations; i++) {
         const writeStart = Date.now()
 
         // 1. Seoul에 마커 Write
-        const writeRes = await fetch(`${getSeoulApiUrl()}/write-marker`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        })
-        const writeData = await writeRes.json()
+        let writeRes
+        try {
+          writeRes = await fetch(`${seoulUrl}/write-marker`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          })
+        } catch (fetchErr) {
+          errors.push(`Iteration ${i + 1}: Seoul Write 연결 실패 - ${fetchErr.message}`)
+          continue
+        }
+
+        let writeData
+        try {
+          writeData = await writeRes.json()
+        } catch (jsonErr) {
+          errors.push(`Iteration ${i + 1}: Seoul Write 응답 파싱 실패`)
+          continue
+        }
+
+        if (writeData.status === 'forbidden') {
+          setError('서버에서 stress 테스트가 비활성화되어 있습니다 (ALLOW_STRESS=false)')
+          return
+        }
 
         if (writeData.status !== 'ok') {
-          errors.push(`Write failed: ${writeData.error}`)
+          errors.push(`Iteration ${i + 1}: Write 실패 - ${writeData.error || writeData.message || 'Unknown'}`)
           continue
         }
 
@@ -159,7 +194,7 @@ export default function StressTest() {
 
         while (Date.now() - writeStart < maxWait) {
           try {
-            const readRes = await fetch(`${getTokyoApiUrl()}/read-marker?id=${markerId}`)
+            const readRes = await fetch(`${tokyoUrl}/read-marker?id=${markerId}`)
             const readData = await readRes.json()
 
             if (readData.status === 'ok' && readData.found) {
@@ -176,7 +211,7 @@ export default function StressTest() {
 
         // 3. Seoul에서 마커 삭제 (cleanup)
         try {
-          await fetch(`${getSeoulApiUrl()}/delete-marker?id=${markerId}`, { method: 'DELETE' })
+          await fetch(`${seoulUrl}/delete-marker?id=${markerId}`, { method: 'DELETE' })
         } catch (e) {
           // ignore cleanup error
         }
@@ -192,7 +227,11 @@ export default function StressTest() {
       }
 
       if (results.length === 0) {
-        setError('모든 Cross-Region 측정 실패')
+        if (errors.length > 0) {
+          setError(`모든 Cross-Region 측정 실패: ${errors[0]}`)
+        } else {
+          setError('모든 Cross-Region 측정 실패')
+        }
         return
       }
 
@@ -211,7 +250,7 @@ export default function StressTest() {
         errors: errors.length > 0 ? errors : undefined,
       })
     } catch (err) {
-      setError(err.message)
+      setError(`Cross-Region 테스트 오류: ${err.message}`)
     } finally {
       setCrossRegionLoading(false)
     }
@@ -270,39 +309,63 @@ export default function StressTest() {
             </button>
           </div>
 
-          {dbInfo?.databases && (
-            <div className="db-info-grid">
-              <div className="db-info-item">
-                <div className="db-info-label">
-                  <span className="db-role">Writer</span>
-                  {getStatusBadge(dbInfo.databases.writer?.status)}
-                </div>
-                <div className="db-info-host">
-                  {dbInfo.databases.writer?.host || '-'}
-                </div>
+          <div className="db-regions-container">
+            {/* 서울 리전 */}
+            <div className="db-region-section seoul">
+              <div className="db-region-header">
+                <span className="region-flag">🇰🇷</span>
+                <span className="region-name">서울 (ap-northeast-2)</span>
               </div>
-
-              <div className="db-info-item">
-                <div className="db-info-label">
-                  <span className="db-role">Reader</span>
-                  {getStatusBadge(dbInfo.databases.reader?.status)}
+              <div className="db-info-grid">
+                <div className="db-info-item">
+                  <div className="db-info-label">
+                    <span className="db-role">Writer</span>
+                    {getStatusBadge(seoulDbInfo?.databases?.writer?.status)}
+                  </div>
+                  <div className="db-info-host">
+                    {seoulDbInfo?.databases?.writer?.host || '-'}
+                  </div>
                 </div>
-                <div className="db-info-host">
-                  {dbInfo.databases.reader?.host || '-'}
-                </div>
-              </div>
-
-              <div className="db-info-item tokyo">
-                <div className="db-info-label">
-                  <span className="db-role">Tokyo Reader</span>
-                  {getStatusBadge(dbInfo.databases.tokyoReader?.status)}
-                </div>
-                <div className="db-info-host">
-                  {dbInfo.databases.tokyoReader?.host || '-'}
+                <div className="db-info-item">
+                  <div className="db-info-label">
+                    <span className="db-role">Reader</span>
+                    {getStatusBadge(seoulDbInfo?.databases?.reader?.status)}
+                  </div>
+                  <div className="db-info-host">
+                    {seoulDbInfo?.databases?.reader?.host || '-'}
+                  </div>
                 </div>
               </div>
             </div>
-          )}
+
+            {/* 도쿄 리전 */}
+            <div className="db-region-section tokyo">
+              <div className="db-region-header">
+                <span className="region-flag">🇯🇵</span>
+                <span className="region-name">도쿄 (ap-northeast-1)</span>
+              </div>
+              <div className="db-info-grid">
+                <div className="db-info-item tokyo">
+                  <div className="db-info-label">
+                    <span className="db-role">Writer</span>
+                    {getStatusBadge(tokyoDbInfo?.databases?.writer?.status)}
+                  </div>
+                  <div className="db-info-host">
+                    {tokyoDbInfo?.databases?.writer?.host || '-'}
+                  </div>
+                </div>
+                <div className="db-info-item tokyo">
+                  <div className="db-info-label">
+                    <span className="db-role">Reader</span>
+                    {getStatusBadge(tokyoDbInfo?.databases?.reader?.status)}
+                  </div>
+                  <div className="db-info-host">
+                    {tokyoDbInfo?.databases?.reader?.host || '-'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
