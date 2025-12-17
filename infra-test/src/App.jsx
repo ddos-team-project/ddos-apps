@@ -4,7 +4,6 @@ import Sidebar from './components/Sidebar'
 import ConnectionTest from './pages/ConnectionTest'
 import LoadTest from './pages/LoadTest'
 import StressTest from './pages/StressTest'
-import Failover from './pages/Failover'
 
 export default function App() {
   return (
@@ -15,7 +14,6 @@ export default function App() {
           <Route path="/" element={<ConnectionTest />} />
           <Route path="/load-test" element={<LoadTest />} />
           <Route path="/stress-test" element={<StressTest />} />
-          <Route path="/failover" element={<Failover />} />
         </Routes>
       </main>
     </div>
