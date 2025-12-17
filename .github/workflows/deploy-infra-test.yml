@@ -39,6 +39,8 @@ jobs:
           npm ci || npm install
 
       - name: Build (test only)
+        env:
+          VITE_FAILOVER_API_KEY: ${{ secrets.FAILOVER_API_KEY }}
         run: |
           cd ${{ env.APP_DIR }}
           npm run build
@@ -64,6 +66,8 @@ jobs:
           npm ci || npm install
 
       - name: Build
+        env:
+          VITE_FAILOVER_API_KEY: ${{ secrets.FAILOVER_API_KEY }}
         run: |
           cd ${{ env.APP_DIR }}
           npm run build
