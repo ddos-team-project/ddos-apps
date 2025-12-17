@@ -34,6 +34,7 @@ export default function LoadTest() {
     { value: 62, label: '62 TPS', desc: '급증 피크' },
   ]
 
+  
   const durationOptions = [
     { value: 600, label: '10분' },
     { value: 1800, label: '30분' },
@@ -214,6 +215,7 @@ export default function LoadTest() {
             </div>
           </div>
 
+          
           <div className="form-actions">
             {!isRunning ? (
               <button className="btn btn-primary btn-large" onClick={startTest}>

@@ -56,25 +56,62 @@ app.get('/ping', async (req, res) => {
   });
 });
 
-// 트랜잭션 시뮬레이션 (피크 트래픽 테스트용)
+// 트랜잭션 시뮬레이션 (피크 트래픽 테스트용) - 실제 서비스와 유사한 DB 작업 포함
 app.post('/transaction', async (req, res) => {
   const startTime = Date.now();
-  const { testId, requestId } = req.body;
+  const { testId, requestId, amount, userId } = req.body;
   const location = await getLocation();
+  const currentRequestId = requestId || 'req-' + Date.now();
 
-  // 실제 거래 처리 시뮬레이션 (100~500ms 랜덤 지연)
-  const processingTime = Math.floor(Math.random() * 400) + 100;
-  await new Promise(resolve => setTimeout(resolve, processingTime));
+  let dbWriteTime = 0;
+  let dbReadTime = 0;
+  let status = 'success';
+  let errorMessage = null;
+
+  try {
+    const pool = getWriterPool();
+
+    // 1. 트랜잭션 로그 INSERT (실제 서비스: 주문/결제 기록 저장)
+    const writeStart = Date.now();
+    await pool.query(
+      `INSERT INTO transaction_logs
+       (test_id, request_id, user_id, amount, instance_id, region, az, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [testId, currentRequestId, userId || 'user-' + Math.floor(Math.random() * 10000),
+       amount || Math.floor(Math.random() * 100000), location.instanceId, location.region, location.az]
+    );
+    dbWriteTime = Date.now() - writeStart;
+
+    // 2. 집계 쿼리 SELECT (실제 서비스: 잔액 조회, 재고 확인 등)
+    const readStart = Date.now();
+    const [rows] = await pool.query(
+      `SELECT COUNT(*) as total_count, SUM(amount) as total_amount
+       FROM transaction_logs WHERE test_id = ?`,
+      [testId]
+    );
+    dbReadTime = Date.now() - readStart;
+
+    // 3. 간단한 비즈니스 로직 (데이터 검증/변환)
+    const summary = {
+      totalCount: rows[0].total_count,
+      totalAmount: rows[0].total_amount || 0,
+    };
+
+  } catch (err) {
+    status = 'error';
+    errorMessage = err.message;
+  }
 
   const timestamp = new Date().toISOString();
   const actualProcessingTime = Date.now() - startTime;
 
+  // 파일 로그 기록 (기존 호환성 유지)
   if (testId) {
     const logEntry = {
       timestamp,
       testId,
-      requestId: requestId || 'req-' + Date.now(),
-      status: 'success',
+      requestId: currentRequestId,
+      status,
       processingMs: actualProcessingTime,
       instanceId: location.instanceId,
       region: location.region,
@@ -96,12 +133,15 @@ app.post('/transaction', async (req, res) => {
   }
 
   res.json({
-    status: 'success',
+    status,
     testId,
-    requestId: requestId || 'req-' + Date.now(),
+    requestId: currentRequestId,
     processingMs: actualProcessingTime,
+    dbWriteMs: dbWriteTime,
+    dbReadMs: dbReadTime,
     location,
     timestamp,
+    ...(errorMessage && { error: errorMessage }),
   });
 });
 
