@@ -12,6 +12,8 @@ export default function LoadTest() {
   const [testResult, setTestResult] = useState(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [error, setError] = useState(null)
+  const [testId, setTestId] = useState(null)
+  const [isStopping, setIsStopping] = useState(false)
 
   const timerRef = useRef(null)
 
@@ -25,13 +27,17 @@ export default function LoadTest() {
     { value: 60, label: '1분' },
     { value: 300, label: '5분' },
     { value: 600, label: '10분' },
+    { value: 1800, label: '30분', desc: '페일오버' },
   ]
 
   const startTest = async () => {
+    const newTestId = 'test-' + Date.now()
+    setTestId(newTestId)
     setIsRunning(true)
     setError(null)
     setTestResult(null)
     setElapsedSeconds(0)
+    setIsStopping(false)
 
     const startTime = Date.now()
     timerRef.current = setInterval(() => {
@@ -40,21 +46,46 @@ export default function LoadTest() {
       if (elapsed >= duration) {
         clearInterval(timerRef.current)
         setIsRunning(false)
+        setTestId(null)
       }
     }, 1000)
 
     try {
-      const response = await fetch(`${API_URL}/load-test`, {
+      const response = await fetch(API_URL + '/load-test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tps, duration, target: 'alb' }),
+        body: JSON.stringify({ tps, duration, testId: newTestId }),
       })
       const data = await response.json()
       setTestResult(data)
     } catch (err) {
       setError(err.message)
       setIsRunning(false)
+      setTestId(null)
       clearInterval(timerRef.current)
+    }
+  }
+
+  const stopTest = async () => {
+    if (!testId || isStopping) return
+
+    setIsStopping(true)
+    try {
+      const response = await fetch(API_URL + '/load-test/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ testId }),
+      })
+      const data = await response.json()
+
+      clearInterval(timerRef.current)
+      setIsRunning(false)
+      setTestId(null)
+      setTestResult(prev => ({ ...prev, status: 'stopped', stoppedAt: data.timestamp }))
+    } catch (err) {
+      setError('중단 실패: ' + err.message)
+    } finally {
+      setIsStopping(false)
     }
   }
 
@@ -62,7 +93,7 @@ export default function LoadTest() {
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [])
 
-  const formatTime = (s) => `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`
+  const formatTime = (s) => Math.floor(s/60) + ':' + String(s%60).padStart(2,'0')
   const totalRequests = tps * duration
 
   return (
@@ -77,6 +108,8 @@ export default function LoadTest() {
         <div className="card">
           <div className="config-hint">
             <strong>방식:</strong> 서버에서 ab로 ALB에 요청 → 각 요청당 14단계 금융 처리 → CPU 부하 → ASG 스케일 아웃
+            <br />
+            <strong>분산:</strong> 랜덤 서브도메인으로 DNS 캐싱 우회 → Route53 가중치(80:20) 분산 적용
           </div>
 
           <div className="form-group">
@@ -95,7 +128,7 @@ export default function LoadTest() {
             <div className="button-group">
               {durationOptions.map(opt => (
                 <button key={opt.value} className={duration === opt.value ? 'active' : ''} onClick={() => setDuration(opt.value)} disabled={isRunning}>
-                  {opt.label}
+                  {opt.label}{opt.desc && <small>{opt.desc}</small>}
                 </button>
               ))}
             </div>
@@ -111,6 +144,11 @@ export default function LoadTest() {
             <button className="btn btn-primary btn-large" onClick={startTest} disabled={isRunning}>
               {isRunning ? '테스트 진행 중...' : '부하 테스트 시작'}
             </button>
+            {isRunning && (
+              <button className="btn btn-danger btn-large" onClick={stopTest} disabled={isStopping} style={{ marginLeft: '10px' }}>
+                {isStopping ? '중단 중...' : '테스트 중단'}
+              </button>
+            )}
           </div>
         </div>
       </section>
@@ -125,7 +163,7 @@ export default function LoadTest() {
                 <span>목표: {formatTime(duration)}</span>
               </div>
               <div className="progress-bar">
-                <div className="progress-fill" style={{ width: `${Math.min((elapsedSeconds/duration)*100, 100)}%` }} />
+                <div className="progress-fill" style={{ width: Math.min((elapsedSeconds/duration)*100, 100) + '%' }} />
               </div>
             </div>
 
@@ -134,16 +172,23 @@ export default function LoadTest() {
                 <div><strong>상태:</strong> {testResult.status}</div>
                 <div><strong>실행 인스턴스:</strong> {testResult.location?.instanceId} ({testResult.location?.region})</div>
                 <div><strong>설정:</strong> {testResult.config?.totalRequests?.toLocaleString()}건, {testResult.config?.concurrency}동시연결</div>
+                {testResult.stoppedAt && <div><strong>중단 시각:</strong> {testResult.stoppedAt}</div>}
               </div>
             )}
 
-            {elapsedSeconds >= duration && (
+            {!isRunning && testResult?.status !== 'stopped' && elapsedSeconds >= duration && (
               <div className="completion-message">
                 <p><strong>테스트 완료!</strong> CloudWatch에서 확인:</p>
                 <ul>
                   <li>EC2 → Auto Scaling Groups → CPU / 인스턴스 수</li>
                   <li>CloudWatch → Metrics → CPUUtilization</li>
                 </ul>
+              </div>
+            )}
+
+            {testResult?.status === 'stopped' && (
+              <div className="completion-message">
+                <p><strong>테스트가 중단되었습니다.</strong></p>
               </div>
             )}
           </div>
