@@ -425,10 +425,10 @@ app.get('/warm-up', async (req, res) => {
 app.listen(PORT, async () => {
   console.log(`Server listening on port ${PORT}`);
 
-  // 서버 시작 시 기본 CPU 부하 30% 자동 시작 (실제 서비스 환경 시뮬레이션)
+  // 서버 시작 시 기본 CPU 부하 40% 자동 시작 (실제 서비스 환경 시뮬레이션)
   if (ALLOW_STRESS) {
     try {
-      const result = await startBackgroundLoad(30, 1);
+      const result = await startBackgroundLoad(40, 2);
       console.log(`[WARM-UP] Auto-started: ${JSON.stringify(result)}`);
     } catch (err) {
       console.error('[WARM-UP] Auto-start failed:', err.message);
