@@ -38,6 +38,9 @@ if (!fsModule.existsSync(LOG_DIR)) {
 
 const testLogs = new Map();
 
+// 실행 중인 부하 테스트 프로세스 추적
+const runningLoadTests = new Map();
+
 app.get('/health', async (req, res) => {
   const dbStatus = await checkDbHealth();
   const location = await getLocation();
@@ -504,71 +507,116 @@ app.get('/warm-up', async (req, res) => {
   });
 });
 
-// 서버사이드 부하 테스트 (ab 사용)
+// 서버사이드 부하 테스트 (ab 사용) - DNS 캐싱 우회를 위한 랜덤 서브도메인 사용
 app.post('/load-test', async (req, res) => {
   if (!ALLOW_STRESS) {
     return res.status(403).json({ status: 'forbidden', message: 'load-test endpoint disabled' });
   }
 
   const location = await getLocation();
-  const { tps = 22, duration = 60, target = 'alb' } = req.body;
+  const { tps = 22, duration = 60, testId } = req.body;
 
   // 총 요청 수 = TPS × duration
   const totalRequests = tps * duration;
   const concurrency = Math.min(tps, 100); // 동시 연결 수 (최대 100)
 
-  // 타겟 URL 설정 (ALB를 통해 모든 인스턴스에 분산)
-  const targetUrl = target === 'alb'
-    ? 'https://tier1.ddos.io.kr/transaction'
-    : `https://${target}.tier1.ddos.io.kr/transaction`;
+  // 10개의 ab 프로세스를 병렬 실행, 각각 다른 랜덤 서브도메인 사용
+  // → DNS 쿼리 10회 → Route53 가중치(80:20) 분산 적용
+  const numProcesses = 10;
+  const requestsPerProcess = Math.ceil(totalRequests / numProcesses);
+  const concurrencyPerProcess = Math.max(1, Math.ceil(concurrency / numProcesses));
 
-  // ab 명령어 구성
-  const abCommand = `ab -n ${totalRequests} -c ${concurrency} -T 'application/json' -p /tmp/ab-post-data.json -s 30 "${targetUrl}" 2>&1`;
+  // 각 프로세스마다 다른 랜덤 서브도메인으로 ab 명령 생성
+  const abCommands = [];
+  const timestamp = Date.now();
+  for (let i = 0; i < numProcesses; i++) {
+    const randomPrefix = 'load-' + timestamp + '-' + i + '-' + Math.random().toString(36).substring(7);
+    const targetUrl = 'https://' + randomPrefix + '.tier1.ddos.io.kr/transaction';
+    abCommands.push('ab -n ' + requestsPerProcess + ' -c ' + concurrencyPerProcess + " -T 'application/json' -p /tmp/ab-post-data.json -s 30 \"" + targetUrl + '" 2>&1');
+  }
+
+  // 모든 ab 명령을 병렬 실행
+  const abCommand = abCommands.join(' & ') + ' & wait';
 
   // POST 데이터 파일 생성
-  const postData = JSON.stringify({ testId: `load-${Date.now()}`, intensity: 'heavy' });
+  const loadTestId = testId || ('load-' + Date.now());
+  const postData = JSON.stringify({ testId: loadTestId, intensity: 'heavy' });
 
   try {
     fsModule.writeFileSync('/tmp/ab-post-data.json', postData);
 
-    console.log(`[LOAD-TEST] Starting: ${abCommand}`);
+    console.log('[LOAD-TEST] Starting: ' + numProcesses + ' parallel processes');
 
-    exec(abCommand, { timeout: (duration + 60) * 1000, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
-      // ab 결과 파싱
-      const result = {
-        status: error ? 'completed_with_errors' : 'success',
-        config: { tps, duration, totalRequests, concurrency, targetUrl },
-        location,
-        timestamp: new Date().toISOString(),
-        rawOutput: stdout || stderr,
-      };
+    const childProcess = exec(abCommand, { timeout: (duration + 120) * 1000, maxBuffer: 50 * 1024 * 1024 }, (error, stdout, stderr) => {
+      // 테스트 완료 시 맵에서 제거
+      runningLoadTests.delete(loadTestId);
+      
+      console.log('[LOAD-TEST] Completed: ' + loadTestId);
+    });
 
-      // ab 출력에서 주요 지표 추출
-      const metrics = {};
-      const rpsMatch = stdout.match(/Requests per second:\s+([\d.]+)/);
-      const timeMatch = stdout.match(/Time taken for tests:\s+([\d.]+)/);
-      const failedMatch = stdout.match(/Failed requests:\s+(\d+)/);
-      const completeMatch = stdout.match(/Complete requests:\s+(\d+)/);
-
-      if (rpsMatch) metrics.requestsPerSecond = parseFloat(rpsMatch[1]);
-      if (timeMatch) metrics.totalTimeSeconds = parseFloat(timeMatch[1]);
-      if (failedMatch) metrics.failedRequests = parseInt(failedMatch[1]);
-      if (completeMatch) metrics.completeRequests = parseInt(completeMatch[1]);
-
-      result.metrics = metrics;
-
-      console.log(`[LOAD-TEST] Completed: ${JSON.stringify(metrics)}`);
+    // 실행 중인 테스트 추적
+    runningLoadTests.set(loadTestId, {
+      process: childProcess,
+      startTime: new Date().toISOString(),
+      config: { tps, duration, totalRequests, concurrency },
     });
 
     // 즉시 응답 (테스트는 백그라운드에서 실행)
     res.json({
       status: 'started',
-      message: `Load test started: ${totalRequests} requests at ${concurrency} concurrency`,
-      config: { tps, duration, totalRequests, concurrency, targetUrl },
+      testId: loadTestId,
+      message: 'Load test started: ' + totalRequests + ' requests with ' + numProcesses + ' parallel processes',
+      config: { tps, duration, totalRequests, concurrency, numProcesses },
       location,
       timestamp: new Date().toISOString(),
     });
 
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      error: error.message,
+      location,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// 부하 테스트 중단
+app.post('/load-test/stop', async (req, res) => {
+  if (!ALLOW_STRESS) {
+    return res.status(403).json({ status: 'forbidden', message: 'load-test endpoint disabled' });
+  }
+
+  const location = await getLocation();
+  const { testId } = req.body;
+
+  if (!testId) {
+    return res.status(400).json({ status: 'error', error: 'testId required' });
+  }
+
+  const runningTest = runningLoadTests.get(testId);
+  if (!runningTest) {
+    return res.status(404).json({ status: 'error', error: 'Test not found or already completed', testId });
+  }
+
+  try {
+    // 프로세스 종료 (SIGTERM)
+    runningTest.process.kill('SIGTERM');
+    
+    // pkill로 ab 프로세스도 정리
+    exec('pkill -f "ab -n"', () => {});
+    
+    runningLoadTests.delete(testId);
+
+    console.log('[LOAD-TEST] Stopped: ' + testId);
+
+    res.json({
+      status: 'stopped',
+      testId,
+      message: 'Load test stopped',
+      location,
+      timestamp: new Date().toISOString(),
+    });
   } catch (error) {
     res.status(500).json({
       status: 'error',
